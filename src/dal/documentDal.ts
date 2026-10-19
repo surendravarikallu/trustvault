@@ -304,6 +304,7 @@ export async function searchDocuments(user: UserContext, params: SearchDocuments
 
   const documents = await prisma.document.findMany({
     where: { AND: andConditions },
+    take: 100,
     orderBy: { createdAt: 'desc' },
     select: {
       id: true,

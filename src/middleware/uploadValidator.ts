@@ -41,10 +41,16 @@ export async function validateUploadedFile(req: Request, res: Response, next: Ne
     return;
   }
 
-  // 1. Sanitize original filename (check for null bytes or path traversal)
-  if (file.originalname.includes('\0') || file.originalname.includes('..')) {
+  // 1. Sanitize original filename (check for null bytes, CRLF header injection, or path traversal)
+  if (
+    file.originalname.includes('\0') ||
+    file.originalname.includes('..') ||
+    file.originalname.includes('\r') ||
+    file.originalname.includes('\n') ||
+    /[\x00-\x1f\x7f]/.test(file.originalname)
+  ) {
     await safeUnlink(file.path);
-    res.status(400).json({ error: 'Illegal characters or path traversal sequence in filename.' });
+    res.status(400).json({ error: 'Illegal characters, CRLF injection, or path traversal sequence in filename.' });
     return;
   }
 

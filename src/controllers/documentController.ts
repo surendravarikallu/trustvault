@@ -56,9 +56,11 @@ export async function uploadDocument(req: AuthenticatedRequest, res: Response): 
   const { title, description, category } = parseResult.data;
   const detectedMime = (req as any).detectedMime || 'application/octet-stream';
 
+  let stored: { storedFilename: string; fileHash: string; fileSize: number } | null = null;
+
   try {
     // 1. Move file to permanent vault storage with opaque UUID
-    const { storedFilename, fileHash, fileSize } = await StorageService.persistFile(file.path);
+    stored = await StorageService.persistFile(file.path);
 
     // 2. Insert record via DAL
     const doc = await createDocument(
@@ -67,11 +69,11 @@ export async function uploadDocument(req: AuthenticatedRequest, res: Response): 
         title,
         description,
         originalFilename: file.originalname,
-        storedFilename,
-        fileSize,
+        storedFilename: stored.storedFilename,
+        fileSize: stored.fileSize,
         mimeType: detectedMime,
         category,
-        fileHash
+        fileHash: stored.fileHash
       },
       getRequestContext(req)
     );
@@ -81,6 +83,9 @@ export async function uploadDocument(req: AuthenticatedRequest, res: Response): 
       document: doc
     });
   } catch (error: any) {
+    if (stored?.storedFilename) {
+      await StorageService.deleteFile(stored.storedFilename);
+    }
     res.status(500).json({ error: `Upload error: ${error.message}` });
   } finally {
     // Guaranteed temporary file cleanup (Loophole L-18)
@@ -192,17 +197,23 @@ export async function replaceDocumentFile(req: AuthenticatedRequest, res: Respon
     return;
   }
 
+  let stored: { storedFilename: string; fileHash: string; fileSize: number } | null = null;
+
   try {
-    const { storedFilename, fileHash, fileSize } = await StorageService.persistFile(file.path);
+    // 1. Check edit authorization FIRST before moving file to permanent storage (CWE-400 defense)
+    await loadDocumentFor(user, id, 'edit', getRequestContext(req));
+
+    // 2. Persist to permanent storage only after authorization succeeds
+    stored = await StorageService.persistFile(file.path);
     const detectedMime = (req as any).detectedMime || 'application/octet-stream';
 
     const updated = await createDocumentVersion(
       user,
       id,
       {
-        storedFilename,
-        fileHash,
-        fileSize,
+        storedFilename: stored.storedFilename,
+        fileHash: stored.fileHash,
+        fileSize: stored.fileSize,
         mimeType: detectedMime,
         originalFilename: file.originalname
       },
@@ -214,6 +225,11 @@ export async function replaceDocumentFile(req: AuthenticatedRequest, res: Respon
       document: updated
     });
   } catch (error: any) {
+    // Clean up permanently stored file if database transaction failed
+    if (stored?.storedFilename) {
+      await StorageService.deleteFile(stored.storedFilename);
+    }
+
     if (error instanceof NotFoundError) {
       res.status(404).json({ error: 'Document not found.' });
     } else if (error instanceof ForbiddenError) {

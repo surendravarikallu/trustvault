@@ -73,9 +73,10 @@ app.use((_req: Request, res: Response) => {
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   console.error('Unhandled server exception:', err);
   const statusCode = err.statusCode || 500;
-  res.status(statusCode).json({
-    error: err.message || 'Internal server error.'
-  });
+  const message = (statusCode === 500 && config.nodeEnv === 'production')
+    ? 'Internal server error.'
+    : (err.message || 'Internal server error.');
+  res.status(statusCode).json({ error: message });
 });
 
 // Start server if executed directly
