@@ -1,6 +1,6 @@
 # TrustVault — Zero-Trust Document Security Engine
 
-TrustVault is a zero-trust enterprise document management system built with Node.js, Express, TypeScript, PostgreSQL, Prisma, and React. It is engineered specifically for defensive security, cryptographic audit integrity, and mutation-tested authorization controls.
+TrustVault is a zero-trust enterprise document management system built with **Node.js, Express, TypeScript, PostgreSQL (Dual DB Roles), Prisma ORM, and React (Vite SPA)**. It is engineered specifically for defensive security, cryptographic audit integrity, and mutation-tested authorization controls.
 
 ---
 
@@ -15,66 +15,93 @@ The system is seeded with dedicated accounts for each evaluation persona:
 | **Authorized Viewer** | `viewer@trustvault.local`| `Viewer@TrustVault2026!` | Read metadata and download explicitly granted documents (`MSA_Acme_2026.pdf`). Cannot upload or re-share. |
 | **Adversary (Eve)** | `eve@trustvault.local` | `Eve@TrustVault2026!` | Registered viewer with zero document grants. Used in automated tests to attempt unauthorized access. |
 
+> [!TIP]
+> **1-Click Evaluation Switcher:** The web interface includes a quick persona switcher in the header, allowing judges and evaluators to switch between Admin, Owner, Viewer, and Eve with a single click.
+
 ---
 
 ## 2. Key Architecture & Security Invariants
 
-- **Enforced Data Access Layer (DAL):** All document access is mediated through `src/dal/documentDal.ts` using `loadDocumentFor(user, id, action, reqContext)` with an ESLint boundary rule (`no-restricted-imports`) prohibiting direct database queries in controllers.
-- **Passing Mutation Testing:** Removing authorization checks immediately causes security route test suites to fail (RED). Verified via `npm run test:mutation`.
+- **Enforced Single Gatekeeper DAL (`src/dal/documentDal.ts`):** All document access is mediated through `loadDocumentFor(user, id, action, reqContext)` using a single `visibleDocumentsWhere(user)` SQL predicate. An automated ESLint boundary rule (`no-restricted-imports`) strictly prohibits `@prisma/client` imports in controllers and routes.
+- **100% Mutation Resistance:** Removing authorization checks immediately causes security route test suites to fail (RED). Verified via `npm run test:mutation`.
 - **Three-Tier Role Hierarchy:** `ADMIN`, `OWNER`, and `VIEWER` with strict privilege boundaries. Public registration creates `VIEWER` (upload disabled); `OWNER` status requires admin promotion.
 - **Owner-Exclusive Sharing:** Editors cannot re-share; Admins cannot view file contents or grant themselves access without explicit document owner authorization.
-- **Cryptographic Audit Ledger:** HMAC-SHA256 hash-chained ledger storing unconstrained document references (preventing existence oracles and delete-time history mutation). Writes are serialized with PostgreSQL advisory transaction locks (`pg_advisory_xact_lock`) and verified against external anchors (`storage/audit_anchor.json`).
-- **Instant Revocation:** `tokenVersion` on user records immediately invalidates active JWTs upon role demotion, deactivation, or logout.
+- **Cryptographic Audit Ledger:** HMAC-SHA256 hash-chained ledger storing unconstrained document references (preventing existence oracles and delete-time history mutation). Writes are serialized with PostgreSQL advisory transaction locks (`pg_advisory_xact_lock`) and verified against external disk anchors (`storage/audit_anchor.json`).
+- **Instant Revocation:** `tokenVersion` on user records immediately invalidates active JWTs upon role demotion, deactivation, or logout on every request.
+- **Fail-Closed Existence Protection (404 vs 403):** Returning 404 for unshared documents conceals document existence from unauthorized probes.
+- **Upload Hardening:** Binary magic byte verification (`fileSignature.ts`), extension whitelisting, RFC 5987 attachment headers, disk storage outside web root, and automatic temporary file unlinking.
 
 ---
 
 ## 3. Quick Start & Verification
 
 ### Prerequisites
-- Node.js (v20+ LTS)
-- PostgreSQL 18 running on `localhost:5432`
+- **Node.js** (v20+ LTS)
+- **PostgreSQL 18** running on `localhost:5432`
 
 ### Setup Database & Dependencies
 ```bash
-# Install dependencies
+# 1. Install dependencies
 npm install
+npm --prefix frontend install
 
-# Push schema to database
+# 2. Push schema to database
 npm run db:push
 
-# Apply PostgreSQL dual-role and immutability trigger
+# 3. Apply PostgreSQL dual-role and immutability trigger
 # (Executed automatically or manually via prisma/setup-roles.sql)
 
-# Seed initial test data and audit ledger
+# 4. Seed initial test data and cryptographic audit ledger
 npm run db:seed
+
+# 5. Build production frontend SPA
+npm run build:frontend
 ```
 
-### Run Tests & Verification
+### Run Tests & Verification Suites
 ```bash
-# Run full 16-suite automated security tests
+# Run full automated test suite (5 suites, 31 security tests)
 npm test
 
 # Run mutation verification tool (proves tests go RED if check is removed)
 npm run test:mutation
 
-# Run ESLint boundary check (asserts zero Prisma imports in controllers)
+# Run live web adversarial verification suite (probes 6 attack vectors)
+npm run test:gatekeeper
+
+# Run ESLint architectural boundary check (asserts zero Prisma imports in controllers)
 npm run lint
 ```
 
-### Start Development Server & Tunnel
+### Start Server & Cloudflare Tunnel
 ```bash
-# Start local Express server (bound to 127.0.0.1:5000)
+# Start local Express server & UI (bound to 127.0.0.1:7777)
+npm start
+# Or for hot-reloading development:
 npm run dev
 
-# Expose server via Cloudflare Tunnel
+# Expose server via Cloudflare Tunnel (zero open inbound ports)
 npm run tunnel
 ```
 
 ---
 
-## 4. Core Documentation
+## 4. Testing & Security Verification Matrix
 
-- **[`IMPLEMENTATION_PLAN.md`](./IMPLEMENTATION_PLAN.md):** Complete architectural analysis, 19 cataloged loopholes & exact fixes, and phased roadmap.
-- **[`THREATS.md`](./THREATS.md):** Catalog of modeled threat vectors (T-01 to T-32) mapped to automated tests and defenses.
-- **[`PROMPTS.md`](./PROMPTS.md):** Human engineering oversight log documenting AI flaws identified, architectural corrections, and Git commit references.
-- **[`CONTEXT_HANDOVER.md`](./CONTEXT_HANDOVER.md):** Architectural handover and database schemas.
+| Test Suite / Script | Coverage Area | Assertions & Vectors |
+| :--- | :--- | :--- |
+| **`tests/security.test.ts`** | Core Access Control & Router Matrix | 16 tests: IDOR 404 blocking, instant revocation, expired grants, reader edit block, editor grant block, admin content block, viewer upload block, path traversal, disguised executables, audit existence oracle, search leakage, HMAC chain verification, token demotion, router coverage. |
+| **`tests/identity-revocation.test.ts`** | Session Invalidation & Timing Attacks | 4 tests: Instant user deactivation session severance (HTTP 401), dummy bcrypt hash timing parity, owner-only delegation, exact email lookup enumeration defense. |
+| **`tests/upload-hardening.test.ts`** | Upload Validation & Storage Bounds | 5 tests: PE/MZ executable rejection, extension whitelist, MIME/extension discrepancy, version history preservation, search query memory bounds (`take: 100`). |
+| **`tests/audit-tamper-immutability.test.ts`** | Cryptographic Ledger Integrity | 3 tests: 13-column HMAC-SHA256 coverage, advisory lock concurrency race condition prevention, external anchor head-fork & substitution detection. |
+| **`tests/audit.test.ts`** | Audit Ledger Baseline | 3 tests: Sequential event logging, valid HMAC hash chain, audit tail truncation detection. |
+| **`scripts/mutation-test.ts`** | Mutation Resistance | Simulates check removal in `loadDocumentFor()`, verifies tests go RED, and restores code (100% green). |
+| **`scripts/verify-dal-invariants.ts`** | Live Web Adversarial Probe | Tests live HTTP/HTTPS targets (localhost or Cloudflare Tunnel) against JWT `alg: none`, HPP, path traversal, cross-tenant IDOR with spoofed headers, prototype pollution, and security headers. |
+
+---
+
+## 5. Core Documentation
+
+- **[`THREATS.md`](./THREATS.md):** Catalog of 32 modeled threat vectors (T-01 to T-32) spanning Categories A through G and Section 3.
+- **[`PROMPTS.md`](./PROMPTS.md):** Human engineering oversight log with 10 entries documenting developer interventions, AI flaw corrections, and Git commit references.
+- **[`CONTEXT_HANDOVER.md`](./CONTEXT_HANDOVER.md):** Complete architectural analysis, 19 cataloged vulnerability fixes (L-01 to L-19), database schemas, and engineering invariants.
