@@ -18,19 +18,38 @@ export interface LoginResponse {
   user?: User;
   mfaRequired?: boolean;
   mfaChallengeToken?: string;
+  mfaEnrollRequired?: boolean;
+  mfaEnrollToken?: string;
+  qrCode?: string;
+  secret?: string;
+  otpauthUrl?: string;
   message?: string;
 }
 
-export async function apiLogin(email: string, password: string): Promise<LoginResponse> {
+export async function apiLogin(email: string, password: string, enrollMfa?: boolean): Promise<LoginResponse> {
   const res = await fetch('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password })
+    body: JSON.stringify({ email, password, enrollMfa })
   });
 
   const data = await res.json();
   if (!res.ok) {
     throw new Error(data.error || 'Login failed.');
+  }
+  return data;
+}
+
+export async function apiConfirmEnrollMfa(mfaEnrollToken: string, code: string): Promise<{ token: string; user: User; backupCodes: string[] }> {
+  const res = await fetch('/api/auth/mfa/confirm-enroll', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mfaEnrollToken, code })
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || 'MFA enrollment confirmation failed.');
   }
   return data;
 }

@@ -118,7 +118,7 @@ describe('Multi-Factor Authentication (MFA / TOTP) Enterprise Suite', () => {
     const challengeToken = loginRes.body.mfaChallengeToken;
     const validTotp = generateTOTP(mfaSecret);
 
-    // First attempt already succeeded in MFA-05; second attempt in same step must fail with 401
+    // Attempting to reuse the exact same TOTP code verified in MFA-05 must fail with 401
     const replayRes = await request(app)
       .post('/api/auth/mfa/verify-login')
       .send({
@@ -208,4 +208,52 @@ describe('Multi-Factor Authentication (MFA / TOTP) Enterprise Suite', () => {
     expect(subsequentLogin.body.token).toBeDefined();
     expect(subsequentLogin.body.mfaRequired).toBeUndefined();
   });
+
+  it('MFA-09: Pre-login On-Demand MFA Enrollment returns QR code and enforces 2FA on subsequent logins', async () => {
+    const uniqueEmail = `mfa_prelogin_${Date.now()}@trustvault.local`;
+    const newUser = {
+      email: uniqueEmail,
+      password: 'PreLoginPass2026!Secure',
+      name: 'PreLogin Enrollee'
+    };
+
+    // Register user
+    await request(app).post('/api/auth/register').send(newUser);
+
+    // Login with enrollMfa: true -> returns QR code + mfaEnrollToken
+    const enrollReq = await request(app)
+      .post('/api/auth/login')
+      .send({ email: newUser.email, password: newUser.password, enrollMfa: true });
+
+    expect(enrollReq.status).toBe(200);
+    expect(enrollReq.body.mfaEnrollRequired).toBe(true);
+    expect(enrollReq.body.mfaEnrollToken).toBeDefined();
+    expect(enrollReq.body.secret).toBeDefined();
+    expect(enrollReq.body.qrCode).toMatch(/^data:image\/png;base64,/);
+    expect(enrollReq.body.otpauthUrl).toContain('otpauth://totp/TrustVault');
+
+    const enrollSecret = enrollReq.body.secret;
+    const enrollToken = enrollReq.body.mfaEnrollToken;
+
+    // Confirm enrollment with valid code
+    const validCode = generateTOTP(enrollSecret);
+    const confirmRes = await request(app)
+      .post('/api/auth/mfa/confirm-enroll')
+      .send({ mfaEnrollToken: enrollToken, code: validCode });
+
+    expect(confirmRes.status).toBe(200);
+    expect(confirmRes.body.token).toBeDefined();
+    expect(confirmRes.body.backupCodes).toHaveLength(8);
+
+    // Subsequent standard login now requires MFA challenge (never bypasses straight to app)
+    const loginChallengeRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: newUser.email, password: newUser.password });
+
+    expect(loginChallengeRes.status).toBe(200);
+    expect(loginChallengeRes.body.mfaRequired).toBe(true);
+    expect(loginChallengeRes.body.mfaChallengeToken).toBeDefined();
+    expect(loginChallengeRes.body.token).toBeUndefined();
+  });
 });
+

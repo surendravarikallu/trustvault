@@ -97,6 +97,7 @@ export async function verifySetupMFA(req: AuthenticatedRequest, res: Response): 
   const user = req.user!;
   const mfaState = await getMfaState(user.id);
 
+  // Validate that user initiated MFA setup and has an active pending encrypted secret
   if (!mfaState || !mfaState.mfaSecret) {
     res.status(400).json({ error: 'MFA setup has not been initiated. Please call /setup first.' });
     return;
@@ -187,25 +188,28 @@ export async function verifyLoginMFA(req: Request, res: Response): Promise<void>
 
   // 1. Check TOTP Code
   if (/^\d{6}$/.test(normalizedCode)) {
-    // Replay Attack Defense (CWE-287): Prevent reusing the same code in the same time step
-    if (mfaState.mfaLastTimeStep && mfaState.mfaLastTimeStep >= currentStep) {
-      await logAuditEvent({
-        action: 'MFA_REPLAY_ATTACK_BLOCKED',
-        userId: mfaState.id,
-        userEmail: mfaState.email,
-        status: AuditStatus.DENIED,
-        ipAddress: req.ip || '127.0.0.1',
-        userAgent: req.headers['user-agent'] || 'Unknown',
-        details: 'Attacker attempted to replay TOTP code in the same 30-second time step.'
-      });
-      res.status(401).json({ error: 'TOTP code has already been used. Please wait for the next 30-second code.' });
-      return;
-    }
-
     const verifyResult = verifyTOTP(normalizedCode, rawSecret, 1);
-    isVerified = verifyResult.valid;
-    if (isVerified) {
-      await recordMfaTimeStep(mfaState.id, currentStep);
+    if (verifyResult.valid) {
+      const codeStep = BigInt(verifyResult.step);
+
+      // Replay Attack Defense (CWE-287 / RFC 6238 Sec 5.2):
+      // Prevent reusing any code from an already verified or earlier time step
+      if (mfaState.mfaLastTimeStep && mfaState.mfaLastTimeStep >= codeStep) {
+        await logAuditEvent({
+          action: 'MFA_REPLAY_ATTACK_BLOCKED',
+          userId: mfaState.id,
+          userEmail: mfaState.email,
+          status: AuditStatus.DENIED,
+          ipAddress: req.ip || '127.0.0.1',
+          userAgent: req.headers['user-agent'] || 'Unknown',
+          details: 'Attacker attempted to replay TOTP code from an already consumed time step.'
+        });
+        res.status(401).json({ error: 'TOTP code has already been used. Please wait for the next 30-second code.' });
+        return;
+      }
+
+      isVerified = true;
+      await recordMfaTimeStep(mfaState.id, codeStep);
     }
   }
 
@@ -311,5 +315,77 @@ export async function disableMFAHandler(req: AuthenticatedRequest, res: Response
   res.json({
     success: true,
     message: 'MFA has been disabled. Previous sessions invalidated.'
+  });
+}
+
+/**
+ * Confirm MFA Enrollment from Login Flow
+ * Accepts an mfaEnrollToken + 6-digit code, activates MFA, and logs the user in.
+ */
+export async function confirmEnrollMFA(req: Request, res: Response): Promise<void> {
+  const { mfaEnrollToken, code } = req.body;
+  if (!mfaEnrollToken || !code || typeof code !== 'string') {
+    res.status(400).json({ error: 'mfaEnrollToken and 6-digit verification code are required.' });
+    return;
+  }
+
+  let payload: any;
+  try {
+    payload = jwt.verify(mfaEnrollToken, config.jwtSecret, { algorithms: ['HS256'] });
+    if (payload.purpose !== 'MFA_ENROLL') {
+      res.status(401).json({ error: 'Invalid challenge token purpose.' });
+      return;
+    }
+  } catch {
+    res.status(401).json({ error: 'Enrollment token has expired. Please log in again.' });
+    return;
+  }
+
+  const userId = payload.userId;
+  const mfaState = await getMfaState(userId);
+  if (!mfaState || !mfaState.mfaSecret) {
+    res.status(400).json({ error: 'MFA setup not found. Please restart enrollment.' });
+    return;
+  }
+
+  const rawSecret = decryptMfaSecret(mfaState.mfaSecret);
+  const verifyResult = verifyTOTP(code.trim(), rawSecret, 1);
+  if (!verifyResult.valid) {
+    res.status(400).json({ error: 'Invalid verification code. Please check your authenticator app.' });
+    return;
+  }
+
+  const currentStep = getCurrentTotpTimeStep();
+  const { rawCodes, hashedCodes } = generateBackupCodes();
+
+  await enableMfa(userId, hashedCodes, currentStep);
+
+  const dbUser = await getUserById(userId);
+  const token = jwt.sign(
+    { userId: dbUser!.id, tokenVersion: dbUser!.tokenVersion },
+    config.jwtSecret,
+    { algorithm: 'HS256', expiresIn: '8h' }
+  );
+
+  await logAuditEvent({
+    action: 'MFA_ENROLLED_AND_CONFIRMED',
+    userId: dbUser!.id,
+    userEmail: dbUser!.email,
+    status: AuditStatus.SUCCESS,
+    ipAddress: req.ip || '127.0.0.1',
+    userAgent: req.headers['user-agent'] || 'Unknown',
+    details: 'User successfully enrolled Google/Microsoft Authenticator and activated MFA.'
+  });
+
+  res.json({
+    message: 'Two-factor authentication successfully enabled!',
+    token,
+    user: {
+      id: dbUser!.id,
+      email: dbUser!.email,
+      name: dbUser!.name,
+      role: dbUser!.role
+    },
+    backupCodes: rawCodes
   });
 }

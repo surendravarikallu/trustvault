@@ -5,7 +5,8 @@ import {
   setupMFA,
   verifySetupMFA,
   verifyLoginMFA,
-  disableMFAHandler
+  disableMFAHandler,
+  confirmEnrollMFA
 } from '../controllers/mfaController';
 import { authenticate } from '../middleware/auth';
 
@@ -39,4 +40,5 @@ authRouter.get('/lookup', authenticate, lookupUser);
 authRouter.post('/mfa/setup', authenticate, setupMFA);
 authRouter.post('/mfa/verify-setup', authenticate, verifySetupMFA);
 authRouter.post('/mfa/verify-login', mfaLimiter, verifyLoginMFA);
+authRouter.post('/mfa/confirm-enroll', mfaLimiter, confirmEnrollMFA);
 authRouter.post('/mfa/disable', authenticate, disableMFAHandler);

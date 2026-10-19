@@ -9,8 +9,12 @@ import {
   getUserByEmail,
   createUser,
   incrementTokenVersion,
-  lookupUserByExactEmail
+  lookupUserByExactEmail,
+  setMfaPendingSecret
 } from '../dal/userDal';
+import QRCode from 'qrcode';
+import { generateBase32Secret, generateTotpUri } from '../utils/totp';
+import { encryptMfaSecret } from '../utils/mfaCrypto';
 
 // Dummy hash generated with bcrypt 12 rounds for timing attack neutralization (L-08)
 const DUMMY_BCRYPT_HASH = '$2b$12$e80yqV0rYyXq4r.15G8aTuOsqaVq6Vw5lZlOfeFm8Q1Vn6eYdKkhe';
@@ -23,7 +27,8 @@ const RegisterSchema = z.object({
 
 const LoginSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(1)
+  password: z.string().min(1),
+  enrollMfa: z.boolean().optional()
 });
 
 export async function register(req: Request, res: Response): Promise<void> {
@@ -92,6 +97,7 @@ export async function login(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  // Multi-Factor Authentication (RFC 6238 TOTP): Intercept credentials and require 2FA challenge
   if (user.mfaEnabled) {
     const mfaChallengeToken = jwt.sign(
       { userId: user.id, purpose: 'MFA_CHALLENGE' },
@@ -102,6 +108,32 @@ export async function login(req: Request, res: Response): Promise<void> {
       mfaRequired: true,
       mfaChallengeToken,
       message: 'MFA verification required. Please submit your 6-digit authenticator code or backup recovery code.'
+    });
+    return;
+  }
+
+  // Pre-Login / On-Demand Authenticator Registration Flow
+  if (parseResult.data.enrollMfa) {
+    const secret = generateBase32Secret(32);
+    const serviceName = 'TrustVault';
+    const otpauth = generateTotpUri(secret, user.email, serviceName);
+    const qrCode = await QRCode.toDataURL(otpauth);
+    const encryptedSecret = encryptMfaSecret(secret);
+    await setMfaPendingSecret(user.id, encryptedSecret);
+
+    const mfaEnrollToken = jwt.sign(
+      { userId: user.id, purpose: 'MFA_ENROLL' },
+      config.jwtSecret,
+      { algorithm: 'HS256', expiresIn: '10m' }
+    );
+
+    res.json({
+      mfaEnrollRequired: true,
+      mfaEnrollToken,
+      qrCode,
+      secret,
+      otpauthUrl: otpauth,
+      message: 'Scan the QR code with Google Authenticator or Microsoft Authenticator, then submit the 6-digit code to complete login.'
     });
     return;
   }
