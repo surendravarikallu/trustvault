@@ -280,10 +280,56 @@ export async function getAuditLogs(filter?: { action?: string; documentId?: stri
     })
   ]);
 
-  const serializedLogs = logs.map((log) => ({
-    ...log,
-    sequenceNumber: log.sequenceNumber.toString()
-  }));
+  const userIds = Array.from(new Set(logs.map((l) => l.userId).filter((id): id is string => Boolean(id))));
+  const userEmails = Array.from(new Set(logs.map((l) => l.userEmail).filter((email): email is string => Boolean(email))));
+
+  let users: { id: string; email: string; name: string }[] = [];
+  if (userIds.length > 0 || userEmails.length > 0) {
+    users = await prisma.user.findMany({
+      where: {
+        OR: [
+          ...(userIds.length > 0 ? [{ id: { in: userIds } }] : []),
+          ...(userEmails.length > 0 ? [{ email: { in: userEmails } }] : [])
+        ]
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true
+      }
+    });
+  }
+
+  const userNameById = new Map<string, string>();
+  const userNameByEmail = new Map<string, string>();
+  for (const u of users) {
+    if (u.id) userNameById.set(u.id, u.name);
+    if (u.email) userNameByEmail.set(u.email.toLowerCase(), u.name);
+  }
+
+  const fallbackNames: Record<string, string> = {
+    'admin@trustvault.local': 'Security Administrator',
+    'owner@trustvault.local': 'Alice Document Owner',
+    'viewer@trustvault.local': 'Bob Authorized Viewer',
+    'eve@trustvault.local': 'Eve Adversary'
+  };
+
+  const serializedLogs = logs.map((log) => {
+    let resolvedName: string | null = null;
+    if (log.userId && userNameById.has(log.userId)) {
+      resolvedName = userNameById.get(log.userId)!;
+    } else if (log.userEmail && userNameByEmail.has(log.userEmail.toLowerCase())) {
+      resolvedName = userNameByEmail.get(log.userEmail.toLowerCase())!;
+    } else if (log.userEmail && fallbackNames[log.userEmail.toLowerCase()]) {
+      resolvedName = fallbackNames[log.userEmail.toLowerCase()];
+    }
+
+    return {
+      ...log,
+      sequenceNumber: log.sequenceNumber.toString(),
+      userName: resolvedName
+    };
+  });
 
   return { total, page, limit, logs: serializedLogs };
 }

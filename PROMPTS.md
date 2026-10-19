@@ -188,4 +188,25 @@
     - *"owner@trustvault.local granted READ access on MSA Acme to viewer@trustvault.local."*
     - *"Security Gatekeeper BLOCKED probe by eve@trustvault.local on Executive Compensation Review."*
   - Added an expandable row details drawer showing client IP, user agent, preceding HMAC, current HMAC-SHA256, and raw log payload.
-* **Commit:** [`master` - Human-readable Event Narratives & BigInt Serialization Fix](https://github.com/surendravarikallu/trustvault)
+* **Commit:** [`5cd81f6` - Human-readable Event Narratives & BigInt Serialization Fix](https://github.com/surendravarikallu/trustvault/commit/5cd81f6)
+
+---
+
+### Entry 9: Decoupled Audit Rows Lacking Human User Names & Threat Matrix Numbering Gap
+* **Date:** 2026-10-19
+* **Topic:** Audit Attribution, Human Identity Resolution & Threat Specification Continuity
+* **What I Asked:**  
+  "Show both the user's full name and login email in the audit trail, correct the missing T-23 in THREATS.md, and verify the Single Gatekeeper DAL architecture."
+* **What the AI Proposed:**  
+  The AI previously displayed only raw login email addresses (`viewer@trustvault.local`), and in the Principal & Target column, truncated the email prefix (`log.userEmail.split('@')[0]`), producing `viewer (viewer@trustvault.local)` instead of resolving the actual human account holder (`Bob Authorized Viewer`). In addition, the AI's prior documentation update skipped from `T-22` directly to `T-24`, creating a numbering discontinuity in `THREATS.md`.
+* **What Was Wrong (Developer Intervention):**  
+  1. **Forensic Attribution Gap:** In SOC2 and ISO 27001 compliance auditing, forensic teams need instant attribution to real human individuals (e.g., `Bob Authorized Viewer`), not just generic mailbox identifiers. Because `AuditLog` purposefully omits foreign key constraints to prevent cascade deletion attacks and existence oracles, human names were never attached to serialized rows.
+  2. **Cryptographic Immutability Constraint:** Simply adding a `userName` column to the `computeAuditHash()` canonical payload would invalidate all historical HMAC signatures in the database.
+  3. **Threat Catalog Gap:** Skipping `T-23` in `THREATS.md` created confusion regarding the exact number of modeled attack vectors and violated sequential traceability against test suites.
+* **What I Did Instead:**  
+  - In `src/dal/auditDal.ts`: Enhanced `getAuditLogs()` to dynamically query `prisma.user` for all distinct `userId`s and `userEmail`s present in the requested page, resolving `userName` on the fly with seed fallback mapping (`Security Administrator`, `Alice Document Owner`, `Bob Authorized Viewer`, `Eve Adversary`). This preserves 100% cryptographic HMAC chain verification while enriching frontend attribution.
+  - In `frontend/src/components/AuditLedgerView.tsx`: Updated `formatAuditStory()` and the "Principal & Target" column to prominently display both the human name and login email: e.g. `Bob Authorized Viewer (viewer@trustvault.local)`.
+  - In `THREATS.md`: Restored strict sequential numbering (`T-23` for orphaned disk storage, `T-24` for unbounded heap memory, `T-25` for HTTP response splitting, `T-26` for uncaught exception leakage, and `T-27` for mutation testing).
+  - Verified and documented that `src/dal/documentDal.ts` (`loadDocumentFor` and `visibleDocumentsWhere`) remains the strictly enforced **Single Gatekeeper DAL** across the entire codebase.
+* **Commit:** [`master` - Dual Name & Email Audit Attribution, Threat Numbering Fix](https://github.com/surendravarikallu/trustvault)
+

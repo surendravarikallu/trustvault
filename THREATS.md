@@ -186,9 +186,9 @@ TrustVault handles sensitive enterprise documents under a strict **Zero-Trust & 
 
 ---
 
-### Category F: Application Hardening & Resource Protection (T-24 to T-27)
+### Category F: Application Hardening & Resource Protection (T-23 to T-26)
 
-#### T-24: Orphaned Disk Storage Consumption via Unauthorized PUT (CWE-400)
+#### T-23: Orphaned Disk Storage Consumption via Unauthorized PUT (CWE-400)
 * **Attacker Scenario:** An authenticated adversary without `EDIT` permissions repeatedly calls `PUT /api/documents/:id` with 15MB file uploads to exhaust server disk space.
 * **Vulnerability Identified:** If the file is moved to permanent storage *before* the authorization gate verifies `EDIT` rights, the 15MB file remains orphaned in `storage/uploads/` even when the request returns `403 Forbidden`.
 * **Defense Mechanism:**
@@ -196,7 +196,7 @@ TrustVault handles sensitive enterprise documents under a strict **Zero-Trust & 
   - Defensive rollback: In the event of a database transaction failure, `StorageService.deleteFile(storedFilename)` immediately unlinks the newly created disk blob.
 * **Commit:** [`c4dc2de`](https://github.com/surendravarikallu/trustvault/commit/c4dc2de)
 
-#### T-25: Unbounded Heap Memory Exhaustion via Broad Search Queries (CWE-770)
+#### T-24: Unbounded Heap Memory Exhaustion via Broad Search Queries (CWE-770)
 * **Attacker Scenario:** An attacker issues search queries with empty or generic filters (`q=""` or `category=Legal`) across a repository containing tens of thousands of documents to exhaust Node.js heap memory.
 * **Defense Mechanism:**
   - Enforced a hard upper boundary of `take: 100` at the Data Access Layer in `src/dal/documentDal.ts`.
@@ -204,14 +204,14 @@ TrustVault handles sensitive enterprise documents under a strict **Zero-Trust & 
 * **Automated Test:** `test_search_hides_unauthorized_docs` & DAL bounded result enforcement.
 * **Commit:** [`c4dc2de`](https://github.com/surendravarikallu/trustvault/commit/c4dc2de)
 
-#### T-26: HTTP Response Splitting via Filename CRLF & Control Character Injection (CWE-113)
+#### T-25: HTTP Response Splitting via Filename CRLF & Control Character Injection (CWE-113)
 * **Attacker Scenario:** An attacker uploads a document whose `originalFilename` contains carriage return (`\r`) or line feed (`\n`) characters (e.g. `test\r\nSet-Cookie: evil=true\r\n.pdf`) in an attempt to split HTTP response headers when downstream clients download the file.
 * **Defense Mechanism:**
   - `validateUploadedFile` in `src/middleware/uploadValidator.ts` validates `file.originalname` against a strict pattern blocking `\0`, `..`, `\r`, `\n`, and all ASCII control characters (`[\x00-\x1f\x7f]`).
   - Violations return `400 Bad Request` and immediately unlink the scratch file.
 * **Commit:** [`c4dc2de`](https://github.com/surendravarikallu/trustvault/commit/c4dc2de)
 
-#### T-27: Uncaught Exception Schema & Stack Trace Leakage in Production (CWE-209)
+#### T-26: Uncaught Exception Schema & Stack Trace Leakage in Production (CWE-209)
 * **Attacker Scenario:** An attacker crafts malformed input to trigger unhandled database driver crashes or constraint failures, reading raw PostgreSQL table and column names in the 500 error response.
 * **Defense Mechanism:**
   - Global error-handling middleware in `src/server.ts` checks `config.nodeEnv === 'production'`.
@@ -220,9 +220,9 @@ TrustVault handles sensitive enterprise documents under a strict **Zero-Trust & 
 
 ---
 
-## 3. Structural Enforcement & Mutation Resistance (T-28)
+## 3. Structural Enforcement & Mutation Resistance (T-27)
 
-#### T-28: Mutation Testing (Bypassing Authorization Checks)
+#### T-27: Mutation Testing (Bypassing Authorization Checks)
 * **Evaluator / Judge Test:** The judge removes or comments out the authorization check in the code and re-runs test suites. If tests still pass due to duplicate/redundant checks or false assertions, the system fails evaluation.
 * **Defense Mechanism:**
   - **Single Data-Access Gatekeeper:** All document reads and writes flow through `src/dal/documentDal.ts`.

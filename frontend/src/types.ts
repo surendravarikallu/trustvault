@@ -60,6 +60,7 @@ export interface AuditRecord {
   action: string;
   userId: string | null;
   userEmail: string | null;
+  userName?: string | null;
   documentId: string | null;
   documentTitle: string | null;
   status: AuditStatus;

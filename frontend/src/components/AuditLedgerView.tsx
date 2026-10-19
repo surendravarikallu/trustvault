@@ -75,7 +75,9 @@ export const AuditLedgerView: React.FC<AuditLedgerViewProps> = ({ token }) => {
    * Translates raw audit records into human-readable enterprise security narratives
    */
   const formatAuditStory = (log: AuditRecord) => {
-    const actor = log.userEmail || (log.userId ? `User(${log.userId.substring(0, 8)})` : 'Unauthenticated Principal');
+    const actor = log.userName && log.userEmail
+      ? `${log.userName} (${log.userEmail})`
+      : (log.userName || log.userEmail || (log.userId ? `User(${log.userId.substring(0, 8)})` : 'Unauthenticated Principal'));
     const doc = log.documentTitle || (log.documentId ? `Document(${log.documentId.substring(0, 8)})` : null);
 
     switch (log.action) {
@@ -387,17 +389,19 @@ export const AuditLedgerView: React.FC<AuditLedgerViewProps> = ({ token }) => {
                       <td>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                           <div style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <User size={11} color="var(--text-dim)" />
-                            <span style={{ fontWeight: 500 }}>
-                              {log.userEmail ? log.userEmail.split('@')[0] : 'System'}
-                            </span>
-                            <span className="mono-cell" style={{ fontSize: '10px' }}>
-                              ({log.userEmail || 'N/A'})
+                            <User size={11} color="var(--text-dim)" style={{ flexShrink: 0 }} />
+                            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                              {log.userName || (log.userEmail ? log.userEmail.split('@')[0] : 'System')}
                             </span>
                           </div>
+                          {log.userEmail && (
+                            <div className="mono-cell" style={{ fontSize: '10px', color: 'var(--text-secondary)', paddingLeft: '15px' }}>
+                              ({log.userEmail})
+                            </div>
+                          )}
                           {log.documentTitle && (
-                            <div style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', color: '#93c5fd' }}>
-                              <FileText size={11} />
+                            <div style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', color: '#93c5fd', marginTop: '2px' }}>
+                              <FileText size={11} style={{ flexShrink: 0 }} />
                               <span style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={log.documentTitle}>
                                 {log.documentTitle}
                               </span>
@@ -452,7 +456,7 @@ export const AuditLedgerView: React.FC<AuditLedgerViewProps> = ({ token }) => {
                               </div>
                               <div style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>
                                 <div><strong>Action Type:</strong> <span className="mono-cell">{log.action}</span></div>
-                                <div><strong>Actor Principal:</strong> <span className="mono-cell">{log.userEmail || 'Unauthenticated'} ({log.userId || 'N/A'})</span></div>
+                                <div><strong>Actor Principal:</strong> <span className="mono-cell">{log.userName ? `${log.userName} (${log.userEmail || 'N/A'})` : (log.userEmail || 'Unauthenticated')} ({log.userId || 'N/A'})</span></div>
                                 <div><strong>Target Resource ID:</strong> <span className="mono-cell">{log.documentId || 'N/A'}</span></div>
                                 <div><strong>Client IP Address:</strong> <span className="mono-cell">{log.ipAddress}</span></div>
                                 <div><strong>HTTP User Agent:</strong> <span className="mono-cell">{log.userAgent}</span></div>
