@@ -75,6 +75,6 @@ npm run tunnel
 ## 4. Core Documentation
 
 - **[`IMPLEMENTATION_PLAN.md`](./IMPLEMENTATION_PLAN.md):** Complete architectural analysis, 19 cataloged loopholes & exact fixes, and phased roadmap.
-- **[`THREATS.md`](./THREATS.md):** Catalog of modeled threat vectors (T-01 to T-27) mapped to automated tests and defenses.
+- **[`THREATS.md`](./THREATS.md):** Catalog of modeled threat vectors (T-01 to T-32) mapped to automated tests and defenses.
 - **[`PROMPTS.md`](./PROMPTS.md):** Human engineering oversight log documenting AI flaws identified, architectural corrections, and Git commit references.
 - **[`CONTEXT_HANDOVER.md`](./CONTEXT_HANDOVER.md):** Architectural handover and database schemas.

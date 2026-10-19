@@ -220,9 +220,48 @@ TrustVault handles sensitive enterprise documents under a strict **Zero-Trust & 
 
 ---
 
-## 3. Structural Enforcement & Mutation Resistance (T-27)
+### Category G: Cryptographic Boundaries & Protocol Hardening (T-27 to T-31)
 
-#### T-27: Mutation Testing (Bypassing Authorization Checks)
+#### T-27: JWT Algorithm None (`alg: none`) & Bogus Signature Forgery (CWE-347)
+* **Attacker Scenario:** An attacker strips the signature from an admin JWT or sets header `{"alg": "none"}` or signs with a bogus key to bypass authentication and gain full administrator privileges.
+* **Defense Mechanism:**
+  - `jwt.verify(token, config.jwtSecret, { algorithms: ['HS256'] })` in `src/middleware/auth.ts` strictly enforces the `HS256` HMAC algorithm, rejecting `none` or mismatched keys with 401 Unauthorized.
+  - Active database session verification ensures token version matches live DB records.
+* **Automated Test:** `ADV-01` in `scripts/verify-dal-invariants.ts`.
+
+#### T-28: HTTP Parameter Pollution & Query Object Synthesis (HPP) (CWE-235)
+* **Attacker Scenario:** An attacker supplies duplicated query parameters (`?q=a&q=b`) or nested object parameters (`?q[$ne]=test&category[in]=Executive`) in search queries to manipulate SQL where clauses or bypass filters.
+* **Defense Mechanism:**
+  - Express `app.set('query parser', 'simple')` disables object parsing.
+  - Strict scalar parameter extraction ensures arrays and nested objects are neutralized, returning 0 documents or 400 validation errors.
+* **Automated Test:** `ADV-02` in `scripts/verify-dal-invariants.ts`.
+
+#### T-29: JSON Prototype Pollution & Role Property Elevation (CWE-1321)
+* **Attacker Scenario:** An attacker submits JSON payloads containing `__proto__` and `constructor.prototype` trying to pollute the JavaScript runtime and elevate permissions from `VIEWER` to `OWNER`.
+* **Defense Mechanism:**
+  - User identity and permissions are strictly minted from cryptographic JWT claims and verified against PostgreSQL on every request; JSON body properties never pollute the authentication context.
+  - Viewers cannot upload documents; attempts return `403 Forbidden` with the global Object prototype unpolluted.
+* **Automated Test:** `ADV-05` in `scripts/verify-dal-invariants.ts`.
+
+#### T-30: Reverse-Proxy Header Spoofing for Cross-Tenant IDOR (CWE-284)
+* **Attacker Scenario:** An adversary probes cross-tenant document download routes while forging reverse-proxy headers (`X-Forwarded-For: 127.0.0.1`, `X-Original-URL`, `X-Rewrite-URL`, `X-User-Role: OWNER`) to simulate internal loopback or elevated owner status.
+* **Defense Mechanism:**
+  - Route authorization completely ignores client-supplied proxy and identity headers.
+  - `loadDocumentFor()` enforces caller ownership via the cryptographic JWT payload and returns `404 Not Found` (zero content bytes and zero existence confirmation).
+* **Automated Test:** `ADV-04` in `scripts/verify-dal-invariants.ts`.
+
+#### T-31: Audit Ledger External Anchor Head-Fork & Substitution (CWE-353)
+* **Attacker Scenario:** An attacker deletes rows from the database or forges an alternate sequence chain, replacing the external disk anchor (`storage/audit_anchor.json`) to force validation of a substitute head hash.
+* **Defense Mechanism:**
+  - `verifyAuditChain()` recalculates HMAC-SHA256 from genesis (seq 1) through the head, validating both internal continuity and exact equality against the external disk anchor.
+  - Substituted head hashes immediately fail verification with: *"External anchor hash mismatch at sequence X. Ledger head was forked or substituted!"*
+* **Automated Test:** `AUD-03` in `tests/audit-tamper-immutability.test.ts`.
+
+---
+
+## 3. Structural Enforcement & Mutation Resistance (T-32)
+
+#### T-32: Mutation Testing (Bypassing Authorization Checks)
 * **Evaluator / Judge Test:** The judge removes or comments out the authorization check in the code and re-runs test suites. If tests still pass due to duplicate/redundant checks or false assertions, the system fails evaluation.
 * **Defense Mechanism:**
   - **Single Data-Access Gatekeeper:** All document reads and writes flow through `src/dal/documentDal.ts`.

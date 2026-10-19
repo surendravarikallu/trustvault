@@ -206,7 +206,31 @@
 * **What I Did Instead:**  
   - In `src/dal/auditDal.ts`: Enhanced `getAuditLogs()` to dynamically query `prisma.user` for all distinct `userId`s and `userEmail`s present in the requested page, resolving `userName` on the fly with seed fallback mapping (`Security Administrator`, `Alice Document Owner`, `Bob Authorized Viewer`, `Eve Adversary`). This preserves 100% cryptographic HMAC chain verification while enriching frontend attribution.
   - In `frontend/src/components/AuditLedgerView.tsx`: Updated `formatAuditStory()` and the "Principal & Target" column to prominently display both the human name and login email: e.g. `Bob Authorized Viewer (viewer@trustvault.local)`.
-  - In `THREATS.md`: Restored strict sequential numbering (`T-23` for orphaned disk storage, `T-24` for unbounded heap memory, `T-25` for HTTP response splitting, `T-26` for uncaught exception leakage, and `T-27` for mutation testing).
+  - In `THREATS.md`: Restored strict sequential numbering (`T-23` for orphaned disk storage, `T-24` for unbounded heap memory, `T-25` for HTTP response splitting, `T-26` for uncaught exception leakage; mutation testing subsequently re-indexed to `T-32` upon addition of Category G protocol hardening `T-27` to `T-31`).
   - Verified and documented that `src/dal/documentDal.ts` (`loadDocumentFor` and `visibleDocumentsWhere`) remains the strictly enforced **Single Gatekeeper DAL** across the entire codebase.
-* **Commit:** [`master` - Dual Name & Email Audit Attribution, Threat Numbering Fix](https://github.com/surendravarikallu/trustvault)
+* **Commit:** [`feb6367` - Dual Name & Email Audit Attribution, Threat Numbering Fix](https://github.com/surendravarikallu/trustvault/commit/feb6367)
+
+---
+
+### Entry 10: Remote Web Adversarial Verification, Controlled Mutation Testing & Defense Subsystems
+* **Date:** 2026-10-19
+* **Topic:** Remote Web Testing, True-Positive Validation & Defense Subsystem Matrix
+* **What I Asked:**  
+  "Support testing arbitrary live web URLs over HTTP/HTTPS against adversarial attack vectors. Validate that the verification script is genuine and not reporting false positives by intentionally simulating a bypass in the codebase. Apply high-standard security verification suites to other critical subsystems and add them to the test folder."
+* **What the AI Proposed:**  
+  The AI originally wrote in-memory verification tests with Supertest against localhost, which could not probe live deployed Cloudflare Tunnels or remote staging domains. Additionally, the test suite had not been validated against an intentional failure, leaving open the risk of false-positive "mock passes."
+* **What Was Wrong (Developer Intervention):**  
+  1. **Network Transport Gap:** In production and staging environments, access control must be verified over true HTTP/HTTPS network connections to ensure reverse-proxy headers, Cloudflare headers, and transport-level security policies (`nosniff`, CSP, CORS) function correctly.
+  2. **Validation Necessity (Testing the Test):** A security verification script cannot be assumed reliable without proving it detects real vulnerabilities. Without a controlled mutation test, a script could simply exit with status 0 regardless of application security state.
+  3. **Coverage Gaps:** While the Data Access Layer was verified, the cryptographic audit ledger, session invalidation engine, and upload hardening lacked dedicated, modular test files in `tests/`.
+* **What I Did Instead:**  
+  - Refactored `scripts/verify-dal-invariants.ts` to use Node's native `fetch` API, enabling live testing against any provided web URL (e.g. `npx tsx scripts/verify-dal-invariants.ts https://your-tunnel.trycloudflare.com`).
+  - Conducted a controlled mutation test by intentionally injecting an `alg: none` bypass into `src/middleware/auth.ts`. Confirmed that `verify-dal-invariants.ts` immediately went RED (`VULNERABLE: Data Leaked? YES (FAIL)`, exit code 1), proving the script accurately identifies real security flaws. Then restored the codebase to its secure state.
+  - Added 3 high-standard test suites to `tests/` covering 31 total tests:
+    - `tests/audit-tamper-immutability.test.ts` (13-column HMAC integrity, concurrency advisory locking, anchor substitution)
+    - `tests/identity-revocation.test.ts` (instant deactivation severance, dummy bcrypt timing attack parity, owner-only delegation, email lookup enumeration defense)
+    - `tests/upload-hardening.test.ts` (PE/MZ magic byte rejection, unauthorized extensions, MIME/extension discrepancy, version history preservation, search query memory bounds).
+  - Expanded `THREATS.md` with Category G (Threats T-27 through T-31) and Section 3 (T-32: Mutation Testing), maintaining uninterrupted sequential indexing across all 32 threats.
+* **Commit:** [`233fce8` - Live Web Testing, Subsystem Matrix, and Sequential Threat Numbering Fix](https://github.com/surendravarikallu/trustvault/commit/233fce8)
+
 
