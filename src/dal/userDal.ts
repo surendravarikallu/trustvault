@@ -175,7 +175,7 @@ export async function consumeMfaBackupCode(userId: string, consumedHash: string)
   });
   if (!user) return null;
 
-  const remainingCodes = user.mfaBackupCodes.filter((c) => c !== consumedHash);
+  const remainingCodes = (user.mfaBackupCodes || []).filter((c: string) => c !== consumedHash);
   return prisma.user.update({
     where: { id: userId },
     data: { mfaBackupCodes: remainingCodes }

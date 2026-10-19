@@ -12,6 +12,12 @@
     "resolveJsonModule": true,
     "types": ["node", "jest"]
   },
-  "include": ["src/**/*", "prisma/**/*", "tests/**/*", "scripts/**/*"],
-  "exclude": ["node_modules", "dist", "storage"]
+  "include": [
+    "src/**/*",
+    "prisma/**/*",
+    "tests/**/*",
+    "scripts/**/*",
+    "node_modules/.prisma/client/index.d.ts"
+  ],
+  "exclude": ["dist", "storage"]
 }
