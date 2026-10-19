@@ -9,6 +9,8 @@ import { authRouter } from './routes/authRoutes';
 import { documentRouter } from './routes/documentRoutes';
 import { adminRouter } from './routes/adminRoutes';
 
+import { pingDatabaseHealth } from './dal/backupDal';
+
 export const app = express();
 
 // 1. Reverse proxy configuration for Cloudflare Tunnel
@@ -35,12 +37,35 @@ app.use(globalLimiter);
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 
-// 6. Health check endpoint
-app.get('/api/health', (_req: Request, res: Response) => {
-  res.json({
-    status: 'healthy',
+// 6. Deep health check endpoint with database probe & system metrics
+app.get('/api/health', async (_req: Request, res: Response) => {
+  let dbStatus = 'connected';
+  let dbLatencyMs = 0;
+
+  try {
+    const dbPing = await pingDatabaseHealth();
+    dbLatencyMs = dbPing.latencyMs;
+  } catch {
+    dbStatus = 'disconnected';
+  }
+
+  const mem = process.memoryUsage();
+  const isHealthy = dbStatus === 'connected';
+
+  res.status(isHealthy ? 200 : 503).json({
+    status: isHealthy ? 'healthy' : 'degraded',
     system: 'TrustVault Zero-Trust Security Engine',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    uptimeSeconds: Math.floor(process.uptime()),
+    database: {
+      status: dbStatus,
+      latencyMs: dbLatencyMs
+    },
+    memory: {
+      rssMb: Math.round((mem.rss / 1024 / 1024) * 100) / 100,
+      heapUsedMb: Math.round((mem.heapUsed / 1024 / 1024) * 100) / 100,
+      heapTotalMb: Math.round((mem.heapTotal / 1024 / 1024) * 100) / 100
+    }
   });
 });
 

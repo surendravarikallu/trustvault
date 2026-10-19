@@ -66,8 +66,10 @@ model Document {
 
   @@index([ownerId])
   @@index([category])
-  @@index([isDeleted])
-  @@index([createdAt])
+  @@index([isDeleted, ownerId])
+  @@index([isDeleted, category])
+  @@index([isDeleted, createdAt])
+  @@index([fileHash])
 }
 
 model DocumentVersion {
@@ -82,6 +84,7 @@ model DocumentVersion {
   createdAt      DateTime @default(now())
 
   @@unique([documentId, versionNumber])
+  @@index([documentId])
 }
 
 model DocumentPermission {
@@ -98,6 +101,7 @@ model DocumentPermission {
 
   @@unique([documentId, userId])
   @@index([userId, documentId])
+  @@index([userId, expiresAt])
   @@index([expiresAt])
 }
 
@@ -119,5 +123,7 @@ model AuditLog {
 
   @@index([sequenceNumber])
   @@index([timestamp])
-  @@index([action])
+  @@index([action, timestamp])
+  @@index([userId, timestamp])
+  @@index([documentId, timestamp])
 }

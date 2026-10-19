@@ -7,7 +7,10 @@ import {
   verifyAuditLedger,
   changeUserRole,
   deactivateUser,
-  getUsers
+  getUsers,
+  createBackupHandler,
+  listBackupsHandler,
+  verifyBackupHandler
 } from '../controllers/adminController';
 
 export const adminRouter = Router();
@@ -23,3 +26,9 @@ adminRouter.get('/audit/verify', verifyAuditLedger);
 adminRouter.patch('/users/:id/role', changeUserRole);
 adminRouter.post('/users/:id/deactivate', deactivateUser);
 adminRouter.get('/users', getUsers);
+
+// Disaster Recovery & Automated Backups
+adminRouter.post('/backups', createBackupHandler);
+adminRouter.get('/backups', listBackupsHandler);
+adminRouter.post('/backups/verify', verifyBackupHandler);
+

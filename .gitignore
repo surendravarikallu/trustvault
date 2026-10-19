@@ -5,6 +5,8 @@ storage/uploads/*
 !storage/uploads/.gitkeep
 storage/temp/*
 !storage/temp/.gitkeep
+storage/backups/*
+!storage/backups/.gitkeep
 storage/audit_anchor.json
 coverage/
 *.log

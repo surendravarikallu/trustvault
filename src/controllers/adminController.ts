@@ -6,6 +6,7 @@ import { getRequestContext } from './documentController';
 import { listDocuments } from '../dal/documentDal';
 import { getAuditLogs, verifyAuditChain, logAuditEvent } from '../dal/auditDal';
 import { setUserRole, setUserActive, listAllUsers, getUserById } from '../dal/userDal';
+import { BackupService } from '../services/backupService';
 
 const RoleChangeSchema = z.object({
   role: z.nativeEnum(Role)
@@ -151,3 +152,43 @@ export async function getUsers(req: AuthenticatedRequest, res: Response): Promis
     res.status(500).json({ error: error.message });
   }
 }
+
+export async function createBackupHandler(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const admin = req.user!;
+  try {
+    const backup = await BackupService.createFullBackup(admin.email);
+    res.status(201).json({
+      message: 'Cryptographic backup successfully created and verified.',
+      backupId: backup.backupId,
+      manifest: backup.manifest
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: `Backup creation failed: ${error.message}` });
+  }
+}
+
+export async function listBackupsHandler(_req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const manifests = await BackupService.listBackups();
+    res.json({ backups: manifests });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
+export async function verifyBackupHandler(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const { backupPath, backupId } = req.body;
+  const target = backupPath || backupId;
+  if (!target || typeof target !== 'string') {
+    res.status(400).json({ error: 'Valid backupPath or backupId is required.' });
+    return;
+  }
+
+  try {
+    const result = await BackupService.verifyBackupArchive(target);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+}
+

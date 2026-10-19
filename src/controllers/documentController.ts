@@ -174,7 +174,12 @@ export async function downloadDocument(req: AuthenticatedRequest, res: Response)
       `attachment; filename="${document.originalFilename.replace(/"/g, '')}"; filename*=UTF-8''${encodedFilename}`
     );
 
-    const stream = fs.createReadStream(filePath);
+    const stream = StorageService.createDecryptedReadStream(filePath);
+    stream.on('error', (err) => {
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Failed to stream document.' });
+      }
+    });
     stream.pipe(res);
   } catch (error: any) {
     if (error instanceof NotFoundError) {

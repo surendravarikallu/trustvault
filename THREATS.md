@@ -278,3 +278,39 @@ TrustVault handles sensitive enterprise documents under a strict **Zero-Trust & 
   - **ESLint Rule (`no-restricted-imports`):** Controllers are strictly forbidden from importing `@prisma/client`.
   - If the authorization check in `loadDocumentFor()` is removed, every single document route security test fails immediately (RED).
 * **Automated Verification:** `scripts/mutation-test.ts` automatically modifies the check, verifies tests go red, and restores code.
+
+#### T-34: Storage Blob Exfiltration & Ciphertext Exposure at Rest (CWE-311)
+* **Attacker Scenario:** An adversary obtains unauthorized physical or volume access to the underlying storage disks and attempts to read raw documents or exfiltrate private files.
+* **Defense Mechanism:**
+  - **Envelope Encryption at Rest:** Every uploaded document is encrypted with AES-256-GCM before written to disk.
+  - Files carry a cryptographically bound header (`TV_AES256_GCM_v1:`), a unique 12-byte IV, a 16-byte GCM authentication tag, and ciphertext.
+  - Streaming downloads use `StorageService.createDecryptedReadStream()`, automatically decrypting in-flight only after the Single Gatekeeper DAL validates the caller's authorization.
+  - Backward compatibility is preserved with unencrypted legacy files transparently.
+* **Automated Test:** `DR-02` & `DR-03` in `tests/backup-disaster-recovery.test.ts`.
+
+#### T-35: Catastrophic Data Loss, Backup Tampering & Host Disaster Recovery (CWE-353 / CWE-310)
+* **Attacker Scenario:** An adversary or system failure destroys the production host, or an insider tampers with backup archives to inject backdoors or alter audit records.
+* **Defense Mechanism:**
+  - **Automated Disaster Recovery Engine:** `BackupService.createFullBackup()` captures an atomic snapshot of database tables, encrypted file blobs, and external audit anchors.
+  - **HMAC-SHA256 Manifest Signing:** Backups generate a cryptographic `manifest.json` signed using `HMAC-SHA256` binding table counts, audit sequence heads, and environment metadata.
+  - **Tamper Detection:** `BackupService.verifyBackupArchive()` validates HMAC signatures and record parity. Any modified file or metadata causes immediate signature verification failure.
+  - **Admin REST Lifecycle:** Protected endpoints (`POST /api/admin/backups`, `GET /api/admin/backups`, `POST /api/admin/backups/verify`) restrict disaster recovery operations to verified administrators.
+  - **Automated Retention:** Implements automated 7-snapshot rolling retention pruning older backups.
+* **Automated Test:** `DR-04`, `DR-05`, `DR-06` in `tests/backup-disaster-recovery.test.ts`.
+
+#### T-36: Database Denial of Service & Query Degradation (CWE-400)
+* **Attacker Scenario:** An attacker executes high-frequency search and filter queries across millions of documents or audit records to exhaust database CPU and connection pools.
+* **Defense Mechanism:**
+  - **High-Performance Composite Indexes:**
+    - `Document`: `@@index([isDeleted, ownerId])`, `@@index([isDeleted, category])`, `@@index([isDeleted, createdAt])`, `@@index([fileHash])`.
+    - `DocumentVersion`: `@@index([documentId])`.
+    - `DocumentPermission`: `@@index([userId, expiresAt])`.
+    - `AuditLog`: `@@index([action, timestamp])`, `@@index([userId, timestamp])`, `@@index([documentId, timestamp])`.
+  - **Query Bounds:** All search queries enforce strict `take: 100` limits, preventing unbounded heap allocations.
+* **Automated Test:** `UPL-05` in `tests/upload-hardening.test.ts`.
+
+#### T-37: Silent System Degradation & Health Probe Blindness
+* **Attacker Scenario:** Database connection pool dies or storage fills up silently while HTTP server returns superficial 200 OK responses to external monitoring.
+* **Defense Mechanism:**
+  - **Deep Health Check Endpoint:** `GET /api/health` executes a live database round-trip probe (`SELECT 1`), measures latency in milliseconds, reports RSS and heap memory consumption, and returns HTTP 503 degraded status if the database becomes unreachable.
+* **Automated Test:** `DR-01` in `tests/backup-disaster-recovery.test.ts`.

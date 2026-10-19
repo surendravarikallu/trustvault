@@ -256,5 +256,28 @@
   - Added dedicated test suite (`tests/mfa-totp.test.ts`) covering 8 lifecycle and adversarial tests, expanding total automated coverage to 39 tests across 6 suites.
 * **Commit:** [`master` - Multi-Factor Authentication (MFA/TOTP) Enterprise Hardening](https://github.com/surendravarikallu/trustvault)
 
+---
+
+### Entry 12: Production Hardening, Composite Database Indexes, Envelope Encryption & Cryptographic Backups
+* **Date:** 2026-10-19
+* **Topic:** Database Performance, Composite Indexing, Envelope Encryption at Rest, and Disaster Recovery
+* **What I Asked:**  
+  "Now go with full application creation with performance optimisation and database optimisation, backups, etc like a real system."
+* **What the AI Proposed:**  
+  The AI suggested directly querying Prisma models inside the backup service, using simple single-column indexes, storing files on disk as raw unencrypted binaries, and running shell commands (`pg_dump`) requiring external postgres CLI tool dependencies on Windows hosts.
+* **What Was Wrong (Developer Intervention):**  
+  1. **ESLint Architectural Boundary Violation:** Direct `@prisma/client` queries inside services violate the project's strict `no-restricted-imports` lint rule, which mandates that all database queries must be strictly encapsulated inside the Data Access Layer (`src/dal/`).
+  2. **External Host Tool Dependencies:** Relying on `pg_dump` fails when running in lightweight Node container environments or Windows evaluation hosts without Postgres CLI binaries installed in the system PATH.
+  3. **Storage Ciphertext Exposure (CWE-311):** Writing raw files to disk leaves confidential documents vulnerable to direct disk volume exfiltration.
+  4. **Inefficient Unindexed Queries:** High-frequency filtered searches (e.g., `isDeleted` + `ownerId`, `isDeleted` + `category`, `userId` + `expiresAt` on permissions, `sequenceNumber` on audit logs) resulted in costly sequential scans under production scale.
+* **What I Did Instead:**  
+  - Encapsulated all database snapshot operations inside `src/dal/backupDal.ts`, fully conforming to the Single Gatekeeper DAL architecture and passing ESLint with 0 warnings.
+  - Implemented high-performance composite database indexes in `prisma/schema.prisma` across `Document` (`[isDeleted, ownerId]`, `[isDeleted, category]`, `[isDeleted, createdAt]`, `[fileHash]`), `DocumentVersion`, `DocumentPermission`, and `AuditLog`.
+  - Implemented AES-256-GCM Envelope Encryption at Rest in `src/services/storageService.ts` with a `TV_AES256_GCM_v1:` magic header, 12-byte IV, and 16-byte authentication tag, coupled with transparent streaming decryption (`createDecryptedReadStream`) maintaining seamless backward-compatibility with unencrypted legacy seed files.
+  - Built an automated Disaster Recovery engine (`src/services/backupService.ts`) producing atomic snapshots bundling database table dumps, encrypted blobs, and external audit anchors signed with HMAC-SHA256, complete with tamper-detection verification and automated 7-snapshot rolling retention.
+  - Enhanced `/api/health` with live database round-trip latency (`SELECT 1`), process memory metrics, and uptime.
+  - Added test suite `tests/backup-disaster-recovery.test.ts` (6 tests), expanding total test coverage to 45 passing tests across 7 test suites with 100% mutation resistance.
+* **Commit:** [`master` - Production Hardening, Database Indexes, Envelope Encryption & Disaster Recovery](https://github.com/surendravarikallu/trustvault)
+
 
 
