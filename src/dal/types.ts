@@ -1,6 +1,6 @@
-import { Role, PermissionLevel, AuditStatus } from '@prisma/client';
+import { Role, PermissionLevel, AuditStatus, User as DbUser } from '@prisma/client';
 
-export { Role, PermissionLevel, AuditStatus };
+export { Role, PermissionLevel, AuditStatus, DbUser };
 
 export interface UserContext {
   id: string;
