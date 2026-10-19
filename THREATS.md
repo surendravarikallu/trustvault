@@ -220,7 +220,7 @@ TrustVault handles sensitive enterprise documents under a strict **Zero-Trust & 
 
 ---
 
-### Category G: Cryptographic Boundaries & Protocol Hardening (T-27 to T-31)
+### Category G: Cryptographic Boundaries & Protocol Hardening (T-27 to T-32)
 
 #### T-27: JWT Algorithm None (`alg: none`) & Bogus Signature Forgery (CWE-347)
 * **Attacker Scenario:** An attacker strips the signature from an admin JWT or sets header `{"alg": "none"}` or signs with a bogus key to bypass authentication and gain full administrator privileges.
@@ -257,11 +257,21 @@ TrustVault handles sensitive enterprise documents under a strict **Zero-Trust & 
   - Substituted head hashes immediately fail verification with: *"External anchor hash mismatch at sequence X. Ledger head was forked or substituted!"*
 * **Automated Test:** `AUD-03` in `tests/audit-tamper-immutability.test.ts`.
 
+#### T-32: TOTP Code Interception, Replay & Challenge Token Forgery (CWE-287 / CWE-307)
+* **Attacker Scenario:** An attacker sniffs a valid 6-digit TOTP code and attempts to replay it within the same 30-second window, or attempts to forge an `mfaChallengeToken` to bypass primary credentials, or brute-forces 6-digit codes.
+* **Defense Mechanism:**
+  - **Replay Defense:** The database tracks `mfaLastTimeStep` per user. Submitting the exact same TOTP code within the current 30-second time step is immediately rejected (`MFA_REPLAY_ATTACK_BLOCKED`, HTTP 401).
+  - **Restricted Challenge Token:** Password verification issues a 3-minute, single-purpose `MFA_CHALLENGE` JWT. Challenge tokens cannot access document or admin routes.
+  - **Secret Encryption at Rest:** The Base32 TOTP secret is encrypted via AES-256-GCM in PostgreSQL.
+  - **Single-Use Backup Codes:** 8 cryptographically random recovery codes stored as SHA-256 hashes; consumed and burned immediately upon first use.
+  - **Rate Limiting:** Dedicated 10 attempts/15min rate limiting on the verification route.
+* **Automated Test:** `tests/mfa-totp.test.ts` (MFA-01 through MFA-08).
+
 ---
 
-## 3. Structural Enforcement & Mutation Resistance (T-32)
+## 3. Structural Enforcement & Mutation Resistance (T-33)
 
-#### T-32: Mutation Testing (Bypassing Authorization Checks)
+#### T-33: Mutation Testing (Bypassing Authorization Checks)
 * **Evaluator / Judge Test:** The judge removes or comments out the authorization check in the code and re-runs test suites. If tests still pass due to duplicate/redundant checks or false assertions, the system fails evaluation.
 * **Defense Mechanism:**
   - **Single Data-Access Gatekeeper:** All document reads and writes flow through `src/dal/documentDal.ts`.

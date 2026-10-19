@@ -233,4 +233,28 @@
   - Expanded `THREATS.md` with Category G (Threats T-27 through T-31) and Section 3 (T-32: Mutation Testing), maintaining uninterrupted sequential indexing across all 32 threats.
 * **Commit:** [`233fce8` - Live Web Testing, Subsystem Matrix, and Sequential Threat Numbering Fix](https://github.com/surendravarikallu/trustvault/commit/233fce8)
 
+---
+
+### Entry 11: Multi-Factor Authentication (MFA / TOTP) Enterprise Hardening & Zero-Dependency Engine
+* **Date:** 2026-10-19
+* **Topic:** Multi-Factor Authentication, RFC 6238 TOTP & Zero-Dependency Cryptographic Reliability
+* **What I Asked:**  
+  "Implement MFA and TOTP with the highest enterprise security standards matching the rest of the zero-trust architecture."
+* **What the AI Proposed:**  
+  The AI originally proposed pulling in an external third-party library (`otplib` v13) with pure-ESM transitive dependencies (`@scure/base`), storing TOTP secrets in plaintext in the database, and issuing full session tokens directly from password login without a restricted challenge state.
+* **What Was Wrong (Developer Intervention):**  
+  1. **Transitive Dependency & Test Suite Breakage:** The pure-ESM transitive dependency broke CommonJS Jest test execution with `SyntaxError: Unexpected token 'export'`, creating an opaque external dependency failure in evaluation test runners.
+  2. **Plaintext Secrets (CWE-312):** Storing Base32 TOTP secrets in plaintext in PostgreSQL leaves user authenticator seeds vulnerable to database-level compromise or backup leakage.
+  3. **Replay Attacks (CWE-287):** Without recording the validated time-step, an eavesdropped or intercepted 6-digit TOTP code could be replayed by an attacker within the active 30-second window.
+  4. **Account Lockout Risk:** Lacked single-use emergency recovery backup codes, creating irreversible denial of service if an authenticator phone was lost or damaged.
+* **What I Did Instead:**  
+  - Built an auditable, zero-dependency native Node.js RFC 6238 TOTP cryptographic engine (`src/utils/totp.ts`) using Node's native C++ OpenSSL `crypto.createHmac('sha1', key)` and RFC 4648 Base32 decoding, eliminating external ESM packaging conflicts.
+  - Encrypted all TOTP secrets at rest in PostgreSQL using AES-256-GCM (`src/utils/mfaCrypto.ts`).
+  - Added replay attack defense by tracking `mfaLastTimeStep` per user, rejecting duplicate code reuse in the same 30-second step with HTTP 401.
+  - Implemented 8 single-use cryptographically random recovery backup codes (hashed with SHA-256 and burned upon first consumption).
+  - Enforced a 2-stage login handshake: successful password authentication returns a restricted 3-minute `mfaChallengeToken` (incapable of accessing vault documents) until the TOTP code is verified.
+  - Added dedicated test suite (`tests/mfa-totp.test.ts`) covering 8 lifecycle and adversarial tests, expanding total automated coverage to 39 tests across 6 suites.
+* **Commit:** [`master` - Multi-Factor Authentication (MFA/TOTP) Enterprise Hardening](https://github.com/surendravarikallu/trustvault)
+
+
 

@@ -92,6 +92,20 @@ export async function login(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  if (user.mfaEnabled) {
+    const mfaChallengeToken = jwt.sign(
+      { userId: user.id, purpose: 'MFA_CHALLENGE' },
+      config.jwtSecret,
+      { algorithm: 'HS256', expiresIn: '3m' }
+    );
+    res.json({
+      mfaRequired: true,
+      mfaChallengeToken,
+      message: 'MFA verification required. Please submit your 6-digit authenticator code or backup recovery code.'
+    });
+    return;
+  }
+
   const token = jwt.sign(
     { userId: user.id, tokenVersion: user.tokenVersion },
     config.jwtSecret,

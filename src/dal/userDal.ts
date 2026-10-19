@@ -108,3 +108,77 @@ export async function getEligibleReviewers(excludeUserId: string) {
     take: 10
   });
 }
+
+export async function setMfaPendingSecret(userId: string, encryptedSecret: string) {
+  return prisma.user.update({
+    where: { id: userId },
+    data: { mfaSecret: encryptedSecret }
+  });
+}
+
+export async function enableMfa(
+  userId: string,
+  hashedBackupCodes: string[],
+  _lastTimeStep?: bigint
+) {
+  return prisma.user.update({
+    where: { id: userId },
+    data: {
+      mfaEnabled: true,
+      mfaBackupCodes: hashedBackupCodes,
+      mfaLastTimeStep: null, // Allow immediate first login in the current 30s window
+      tokenVersion: { increment: 1 } // Invalidate old non-MFA sessions
+    }
+  });
+}
+
+export async function disableMfa(userId: string) {
+  return prisma.user.update({
+    where: { id: userId },
+    data: {
+      mfaEnabled: false,
+      mfaSecret: null,
+      mfaBackupCodes: [],
+      mfaLastTimeStep: null,
+      tokenVersion: { increment: 1 } // Invalidate sessions on MFA disable
+    }
+  });
+}
+
+export async function getMfaState(userId: string) {
+  return prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      email: true,
+      role: true,
+      tokenVersion: true,
+      mfaEnabled: true,
+      mfaSecret: true,
+      mfaBackupCodes: true,
+      mfaLastTimeStep: true
+    }
+  });
+}
+
+export async function recordMfaTimeStep(userId: string, timeStep: bigint) {
+  return prisma.user.update({
+    where: { id: userId },
+    data: { mfaLastTimeStep: timeStep }
+  });
+}
+
+export async function consumeMfaBackupCode(userId: string, consumedHash: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { mfaBackupCodes: true }
+  });
+  if (!user) return null;
+
+  const remainingCodes = user.mfaBackupCodes.filter((c) => c !== consumedHash);
+  return prisma.user.update({
+    where: { id: userId },
+    data: { mfaBackupCodes: remainingCodes }
+  });
+}
+

@@ -32,6 +32,10 @@ model User {
   role         Role                 @default(VIEWER)
   isActive     Boolean              @default(true)
   tokenVersion Int                  @default(1)
+  mfaEnabled   Boolean              @default(false)
+  mfaSecret    String?              // Encrypted at rest via AES-256-GCM
+  mfaBackupCodes String[]           @default([])
+  mfaLastTimeStep BigInt?           // Replay attack prevention: records last validated 30s step
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
   documents    Document[]           @relation("DocumentOwner")

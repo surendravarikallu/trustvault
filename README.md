@@ -30,6 +30,7 @@ The system is seeded with dedicated accounts for each evaluation persona:
 - **Instant Revocation:** `tokenVersion` on user records immediately invalidates active JWTs upon role demotion, deactivation, or logout on every request.
 - **Fail-Closed Existence Protection (404 vs 403):** Returning 404 for unshared documents conceals document existence from unauthorized probes.
 - **Upload Hardening:** Binary magic byte verification (`fileSignature.ts`), extension whitelisting, RFC 5987 attachment headers, disk storage outside web root, and automatic temporary file unlinking.
+- **Multi-Factor Authentication (RFC 6238 TOTP):** Native zero-dependency RFC 6238 TOTP engine with AES-256-GCM encrypted secrets at rest, single-use SHA-256 backup recovery codes, 30-second replay window defense (`mfaLastTimeStep`), and 2-stage login challenge token handshake.
 
 ---
 
@@ -60,7 +61,7 @@ npm run build:frontend
 
 ### Run Tests & Verification Suites
 ```bash
-# Run full automated test suite (5 suites, 31 security tests)
+# Run full automated test suite (6 suites, 39 security tests)
 npm test
 
 # Run mutation verification tool (proves tests go RED if check is removed)
@@ -91,6 +92,7 @@ npm run tunnel
 | Test Suite / Script | Coverage Area | Assertions & Vectors |
 | :--- | :--- | :--- |
 | **`tests/security.test.ts`** | Core Access Control & Router Matrix | 16 tests: IDOR 404 blocking, instant revocation, expired grants, reader edit block, editor grant block, admin content block, viewer upload block, path traversal, disguised executables, audit existence oracle, search leakage, HMAC chain verification, token demotion, router coverage. |
+| **`tests/mfa-totp.test.ts`** | Multi-Factor Authentication & Replay | 8 tests: Base32 secret generation, QR code DataURI, invalid code rejection, confirmation with 8 backup codes, login challenge token isolation, 30s replay defense (CWE-287), single-use backup code consumption, dual-verification disable. |
 | **`tests/identity-revocation.test.ts`** | Session Invalidation & Timing Attacks | 4 tests: Instant user deactivation session severance (HTTP 401), dummy bcrypt hash timing parity, owner-only delegation, exact email lookup enumeration defense. |
 | **`tests/upload-hardening.test.ts`** | Upload Validation & Storage Bounds | 5 tests: PE/MZ executable rejection, extension whitelist, MIME/extension discrepancy, version history preservation, search query memory bounds (`take: 100`). |
 | **`tests/audit-tamper-immutability.test.ts`** | Cryptographic Ledger Integrity | 3 tests: 13-column HMAC-SHA256 coverage, advisory lock concurrency race condition prevention, external anchor head-fork & substitution detection. |
@@ -102,6 +104,6 @@ npm run tunnel
 
 ## 5. Core Documentation
 
-- **[`THREATS.md`](./THREATS.md):** Catalog of 32 modeled threat vectors (T-01 to T-32) spanning Categories A through G and Section 3.
-- **[`PROMPTS.md`](./PROMPTS.md):** Human engineering oversight log with 10 entries documenting developer interventions, AI flaw corrections, and Git commit references.
+- **[`THREATS.md`](./THREATS.md):** Catalog of 33 modeled threat vectors (T-01 to T-33) spanning Categories A through G and Section 3.
+- **[`PROMPTS.md`](./PROMPTS.md):** Human engineering oversight log with 11 entries documenting developer interventions, AI flaw corrections, and Git commit references.
 - **[`CONTEXT_HANDOVER.md`](./CONTEXT_HANDOVER.md):** Complete architectural analysis, 19 cataloged vulnerability fixes (L-01 to L-19), database schemas, and engineering invariants.

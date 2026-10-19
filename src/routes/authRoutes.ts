@@ -1,11 +1,17 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { register, login, logout, me, lookupUser } from '../controllers/authController';
+import {
+  setupMFA,
+  verifySetupMFA,
+  verifyLoginMFA,
+  disableMFAHandler
+} from '../controllers/mfaController';
 import { authenticate } from '../middleware/auth';
 
 export const authRouter = Router();
 
-// Rate limiter for authentication endpoints: 10 attempts per 15 minutes per IP
+// Rate limiter for authentication endpoints: 15 attempts per 15 minutes per IP
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 15,
@@ -14,8 +20,23 @@ const authLimiter = rateLimit({
   message: { error: 'Too many authentication attempts. Please try again after 15 minutes.' }
 });
 
+// Stricter rate limiter for TOTP verification: 5 attempts per 15 minutes
+const mfaLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many MFA verification attempts. Please wait 15 minutes.' }
+});
+
 authRouter.post('/register', authLimiter, register);
 authRouter.post('/login', authLimiter, login);
 authRouter.post('/logout', authenticate, logout);
 authRouter.get('/me', authenticate, me);
 authRouter.get('/lookup', authenticate, lookupUser);
+
+// MFA Endpoints
+authRouter.post('/mfa/setup', authenticate, setupMFA);
+authRouter.post('/mfa/verify-setup', authenticate, verifySetupMFA);
+authRouter.post('/mfa/verify-login', mfaLimiter, verifyLoginMFA);
+authRouter.post('/mfa/disable', authenticate, disableMFAHandler);
