@@ -48,7 +48,7 @@
   - Removed the Foreign Key constraint entirely. Stored `documentId` as an unconstrained plain string/UUID snapshot alongside `documentTitle`.
   - Non-existent UUID probes log safely without constraint violations.
   - Historical rows remain strictly immutable upon document deletion.
-* **Commit:** `[Commit Hash Pending - Day 1 Schema]`
+* **Commit:** [`09130fd` - Enforced DAL, HMAC-SHA256 Audit Ledger, and Test Matrix](https://github.com/surendravarikallu/trustvault/commit/09130fd)
 
 ---
 
@@ -80,7 +80,7 @@
   - Converted `sequenceNumber.toString()` before JSON serialization.
   - Set timestamps explicitly in Node.js ISO format prior to insertion.
   - Switched from standard SHA-256 to **HMAC-SHA256** using an external secret key (`AUDIT_HMAC_SECRET`).
-* **Commit:** `[Commit Hash Pending - Day 1 Audit Service]`
+* **Commit:** [`09130fd` - Enforced DAL, HMAC-SHA256 Audit Ledger, and Test Matrix](https://github.com/surendravarikallu/trustvault/commit/09130fd)
 
 ---
 
@@ -99,7 +99,7 @@
   - Added `PATCH /api/admin/users/:id/role` and user deactivation endpoints that increment `tokenVersion`.
   - Auth middleware checks the active user record and verifies `token.tokenVersion === dbUser.tokenVersion` on every request.
   - Demotion or logout invalidates all existing tokens instantly.
-* **Commit:** `[Commit Hash Pending - Day 2 Auth]`
+* **Commit:** [`09130fd` - Enforced DAL, HMAC-SHA256 Audit Ledger, and Test Matrix](https://github.com/surendravarikallu/trustvault/commit/09130fd)
 
 ---
 
@@ -119,6 +119,28 @@
   3. **Express `qs` Object Injection:** Express parses `?owner[not]=x` into an object, which can manipulate Prisma `WHERE` filters if passed unvalidated.
 * **What I Did Instead:**  
   - Restored `OWNER` in the `Role` enum. Public registration creates `VIEWER`; only `OWNER` or `ADMIN` can upload documents.
-  - Added full upload validation with buffer magic bytes (`file-type`), extension whitelist, null-byte checks, and Multer temp-file unlinking on failure.
+  - Added full upload validation with buffer magic bytes (`src/utils/fileSignature.ts`), extension whitelist, null-byte checks, and Multer temp-file unlinking on failure.
   - Configured `app.set('query parser', 'simple')` and wrapped all inputs with strict Zod schemas.
-* **Commit:** `[Commit Hash Pending - Day 2 Storage & Validation]`
+* **Commit:** [`09130fd` - Enforced DAL, HMAC-SHA256 Audit Ledger, and Test Matrix](https://github.com/surendravarikallu/trustvault/commit/09130fd)
+
+---
+
+### Entry 6: ESLint Boundary Enforcement Catching Prisma Imports in Controllers
+* **Date:** 2026-10-19
+* **Topic:** Strict Architectural Boundary Enforcement via Automated Linting
+* **What I Asked:**  
+  "Write the Express controllers for auth, documents, permissions, and admin operations."
+* **What the AI Proposed:**  
+  The AI directly imported `@prisma/client` in several controllers and middleware:
+  ```typescript
+  import { Role, PermissionLevel, AuditStatus } from '@prisma/client';
+  ```
+* **What Was Wrong (Developer Intervention):**  
+  The automated ESLint rule `no-restricted-imports` immediately failed the build with 6 errors:
+  `'@prisma/client' import is restricted from being used. Direct Prisma database imports are strictly prohibited outside src/dal/ and prisma/.`
+  Even importing enums from `@prisma/client` creates an implicit dependency on the database client, tempting future developers to import Prisma types or instantiate direct query clients in controllers.
+* **What I Did Instead:**  
+  - Created `src/dal/types.ts` within the Data Access Layer to export all domain types and enums (`Role`, `PermissionLevel`, `AuditStatus`, `UserContext`, `RequestContext`).
+  - Rewrote all controllers, middleware, and routes to import strictly from `src/dal/types`.
+  - Re-ran `npm run lint` and `npm run build` to verify 100% compliance with zero restricted imports.
+* **Commit:** [`09130fd` - Enforced DAL, HMAC-SHA256 Audit Ledger, and Test Matrix](https://github.com/surendravarikallu/trustvault/commit/09130fd)
