@@ -1,0 +1,119 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  OWNER
+  VIEWER
+}
+
+enum PermissionLevel {
+  READ
+  EDIT
+}
+
+enum AuditStatus {
+  SUCCESS
+  DENIED
+  FAILED
+}
+
+model User {
+  id           String               @id @default(uuid())
+  email        String               @unique
+  passwordHash String
+  name         String
+  role         Role                 @default(VIEWER)
+  isActive     Boolean              @default(true)
+  tokenVersion Int                  @default(1)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  documents    Document[]           @relation("DocumentOwner")
+  permissions  DocumentPermission[] @relation("UserPermissions")
+  grantedPerms DocumentPermission[] @relation("GrantedBy")
+
+  @@index([email])
+}
+
+model Document {
+  id               String               @id @default(uuid())
+  title            String
+  description      String?
+  originalFilename String
+  storedFilename   String               // Active UUID blob on disk (no extensions)
+  fileSize         Int
+  mimeType         String
+  category         String
+  fileHash         String               // SHA-256 of active disk blob
+  isDeleted        Boolean              @default(false)
+  deletedAt        DateTime?
+  ownerId          String
+  owner            User                 @relation("DocumentOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  versions         DocumentVersion[]
+  permissions      DocumentPermission[]
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  @@index([ownerId])
+  @@index([category])
+  @@index([isDeleted])
+  @@index([createdAt])
+}
+
+model DocumentVersion {
+  id             String   @id @default(uuid())
+  documentId     String
+  document       Document @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  versionNumber  Int
+  storedFilename String   // Preserved historical blob UUID
+  fileSize       Int
+  fileHash       String
+  uploadedById   String
+  createdAt      DateTime @default(now())
+
+  @@unique([documentId, versionNumber])
+}
+
+model DocumentPermission {
+  id              String          @id @default(uuid())
+  documentId      String
+  document        Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User            @relation("UserPermissions", fields: [userId], references: [id], onDelete: Cascade)
+  permissionLevel PermissionLevel
+  expiresAt       DateTime?
+  grantedById     String
+  grantedBy       User            @relation("GrantedBy", fields: [grantedById], references: [id], onDelete: Restrict)
+  grantedAt       DateTime        @default(now())
+
+  @@unique([documentId, userId])
+  @@index([userId, documentId])
+  @@index([expiresAt])
+}
+
+model AuditLog {
+  id             String      @id @default(uuid())
+  sequenceNumber BigInt      @unique
+  timestamp      DateTime    // Explicit Node.js millisecond ISO precision
+  action         String
+  userId         String?     // Plain unconstrained string snapshot
+  userEmail      String?     // Covered by HMAC hash
+  documentId     String?     // Plain unconstrained string (no FK constraint)
+  documentTitle  String?     // Covered by HMAC hash
+  status         AuditStatus
+  ipAddress      String
+  userAgent      String
+  details        String
+  previousHash   String
+  hash           String
+
+  @@index([sequenceNumber])
+  @@index([timestamp])
+  @@index([action])
+}
