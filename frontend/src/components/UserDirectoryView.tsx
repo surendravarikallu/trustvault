@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Key, UserX } from 'lucide-react';
+import { KeyRound, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 import type { User, Role } from '../types';
 import { fetchAllUsers, changeUserRole, deactivateUser } from '../api';
 
@@ -35,7 +35,7 @@ export const UserDirectoryView: React.FC<UserDirectoryViewProps> = ({ token, cur
     setMsg(null);
     try {
       await changeUserRole(userId, newRole, token);
-      setMsg(`Updated user role to ${newRole}. Token version incremented; active sessions invalidated instantly.`);
+      setMsg(`Updated role to ${newRole}. Token version incremented in PostgreSQL; active sessions invalidated instantly.`);
       await loadUsers();
     } catch (err: any) {
       setError(err.message);
@@ -50,7 +50,7 @@ export const UserDirectoryView: React.FC<UserDirectoryViewProps> = ({ token, cur
     setMsg(null);
     try {
       await deactivateUser(userId, token);
-      setMsg(`Deactivated user ${name}. All sessions terminated.`);
+      setMsg(`Deactivated user ${name}. All active JWTs blocked.`);
       await loadUsers();
     } catch (err: any) {
       setError(err.message);
@@ -59,122 +59,139 @@ export const UserDirectoryView: React.FC<UserDirectoryViewProps> = ({ token, cur
 
   return (
     <div>
+      {/* Enterprise Security Architecture Banner */}
       <div
         style={{
-          background: 'rgba(99, 102, 241, 0.05)',
-          border: '1px solid rgba(99, 102, 241, 0.2)',
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border-default)',
           borderRadius: 'var(--radius-sm)',
-          padding: '14px 18px',
-          marginBottom: '20px',
-          fontSize: '0.85rem',
+          padding: '12px 16px',
+          marginBottom: '16px',
+          fontSize: '12px',
           color: 'var(--text-secondary)'
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent-indigo)', fontWeight: 600, marginBottom: '4px' }}>
-          <Key size={16} />
-          <span>Real-Time Role Management & Instant Session Revocation (L-01)</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#93c5fd', fontWeight: 600, marginBottom: '4px' }}>
+          <KeyRound size={14} />
+          <span>Real-Time Role Governance & Monotonic Session Revocation (L-01)</span>
+          {isLoading && <RefreshCw size={12} className="spin-icon" style={{ marginLeft: 'auto' }} />}
         </div>
-        Promoting or demoting a user or deactivating their account increments the user's <span className="mono">tokenVersion</span> in PostgreSQL. Active JWTs for that account are blocked on their very next HTTP request.
+        Changing a user's role or deactivating an identity atomically increments <span className="mono-cell">tokenVersion</span> in PostgreSQL. The authentication middleware verifies the database tokenVersion on every request, neutralizing stolen or stale JWT tokens without requiring distributed Redis blacklists.
       </div>
 
       {msg && (
         <div
           style={{
-            background: 'var(--accent-emerald-subtle)',
-            border: '1px solid rgba(16, 185, 129, 0.3)',
-            color: 'var(--accent-emerald)',
-            padding: '10px 14px',
+            background: 'var(--color-emerald-subtle)',
+            border: '1px solid var(--color-emerald-border)',
+            color: '#6ee7b7',
+            padding: '8px 12px',
             borderRadius: 'var(--radius-sm)',
-            fontSize: '0.85rem',
-            marginBottom: '16px'
+            fontSize: '12px',
+            marginBottom: '14px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
           }}
         >
-          {msg}
+          <CheckCircle2 size={14} />
+          <span>{msg}</span>
         </div>
       )}
 
       {error && (
         <div
           style={{
-            background: 'var(--accent-rose-subtle)',
-            border: '1px solid rgba(244, 63, 94, 0.3)',
-            color: 'var(--accent-rose)',
-            padding: '10px 14px',
+            background: 'var(--color-rose-subtle)',
+            border: '1px solid var(--color-rose-border)',
+            color: '#fca5a5',
+            padding: '8px 12px',
             borderRadius: 'var(--radius-sm)',
-            fontSize: '0.85rem',
-            marginBottom: '16px'
+            fontSize: '12px',
+            marginBottom: '14px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
           }}
         >
-          {error}
+          <AlertCircle size={14} />
+          <span>{error}</span>
         </div>
       )}
 
-      <div className="table-container">
-        {isLoading ? (
-          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
-            Loading enterprise directory...
-          </div>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>User Details</th>
-                <th>Current Role</th>
-                <th>Status</th>
-                <th>Token Version</th>
-                <th style={{ textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((u) => {
-                const isSelf = u.id === currentUser.id;
+      {/* User Directory Table */}
+      <div className="data-table-wrapper">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Identity</th>
+              <th>Corporate Email</th>
+              <th>Role Assignment</th>
+              <th>Token Version</th>
+              <th>Status</th>
+              <th style={{ textAlign: 'right' }}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {users.map((u) => {
+              const isSelf = u.id === currentUser.id;
 
-                return (
-                  <tr key={u.id}>
-                    <td>
-                      <div style={{ fontWeight: 600 }}>{u.name}</div>
-                      <div className="mono" style={{ fontSize: '0.75rem' }}>{u.email}</div>
-                    </td>
-                    <td>
-                      <span className={`role-tag role-${u.role}`}>{u.role}</span>
-                    </td>
-                    <td>
-                      <span className={`status-pill ${u.isActive !== false ? 'status-SUCCESS' : 'status-DENIED'}`}>
-                        {u.isActive !== false ? 'Active' : 'Deactivated'}
-                      </span>
-                    </td>
-                    <td className="mono">v{u.tokenVersion || 1}</td>
-                    <td style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'inline-flex', gap: '8px' }}>
-                        <select
-                          value={u.role}
-                          disabled={isSelf}
-                          onChange={(e) => handleRoleChange(u.id, e.target.value as Role)}
-                          style={{ padding: '4px 8px', fontSize: '0.775rem' }}
-                        >
-                          <option value="VIEWER">VIEWER</option>
-                          <option value="OWNER">OWNER</option>
-                          <option value="ADMIN">ADMIN</option>
-                        </select>
+              return (
+                <tr key={u.id}>
+                  <td>
+                    <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)' }}>
+                      {u.name} {isSelf && <span style={{ fontSize: '10px', color: 'var(--text-dim)' }}>(Current)</span>}
+                    </div>
+                  </td>
 
-                        {!isSelf && u.isActive !== false && (
-                          <button
-                            className="btn btn-danger btn-sm"
-                            onClick={() => handleDeactivate(u.id, u.name)}
-                            title="Deactivate account"
-                          >
-                            <UserX size={12} />
-                            <span>Deactivate</span>
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
+                  <td className="mono-cell" style={{ fontSize: '11px' }}>
+                    {u.email}
+                  </td>
+
+                  <td>
+                    {isSelf ? (
+                      <span className={`role-pill role-${u.role}`}>{u.role}</span>
+                    ) : (
+                      <select
+                        value={u.role}
+                        onChange={(e) => handleRoleChange(u.id, e.target.value as Role)}
+                        style={{ padding: '3px 8px', fontSize: '11px', width: 'auto' }}
+                      >
+                        <option value="ADMIN">ADMIN</option>
+                        <option value="OWNER">OWNER</option>
+                        <option value="VIEWER">VIEWER</option>
+                      </select>
+                    )}
+                  </td>
+
+                  <td className="mono-cell" style={{ fontSize: '11px' }}>
+                    v{u.tokenVersion}
+                  </td>
+
+                  <td>
+                    {u.isActive ? (
+                      <span className="status-pill status-SUCCESS">ACTIVE</span>
+                    ) : (
+                      <span className="status-pill status-DENIED">DEACTIVATED</span>
+                    )}
+                  </td>
+
+                  <td style={{ textAlign: 'right' }}>
+                    {!isSelf && u.isActive && (
+                      <button
+                        type="button"
+                        className="btn btn-danger btn-xs"
+                        onClick={() => handleDeactivate(u.id, u.name)}
+                      >
+                        Deactivate
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );

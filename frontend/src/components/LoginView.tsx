@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Shield, ArrowRight } from 'lucide-react';
+import { Shield, ArrowRight, Lock, AlertCircle } from 'lucide-react';
 import { apiLogin } from '../api';
 import type { User } from '../types';
 
@@ -22,7 +22,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
       const data = await apiLogin(email, password);
       onLoginSuccess(data.token, data.user);
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Authentication failed.');
     } finally {
       setIsLoading(false);
     }
@@ -37,7 +37,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
       const data = await apiLogin(pEmail, pPass);
       onLoginSuccess(data.token, data.user);
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Authentication failed.');
     } finally {
       setIsLoading(false);
     }
@@ -49,28 +49,32 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
       name: 'Security Administrator',
       email: 'admin@trustvault.local',
       pass: 'Admin@TrustVault2026!',
-      desc: 'Audit verification, user role control, zero file access without grant.'
+      badgeClass: 'role-ADMIN',
+      desc: 'Audit ledger oversight, user governance, 0 document access without explicit grant.'
     },
     {
       role: 'OWNER',
       name: 'Alice (Document Owner)',
       email: 'owner@trustvault.local',
       pass: 'Owner@TrustVault2026!',
-      desc: 'Can upload, grant/revoke permissions, and use AI reviewer suggestions.'
+      badgeClass: 'role-OWNER',
+      desc: 'Sole authorized granter for her documents; uploads and manages access delegations.'
     },
     {
       role: 'VIEWER',
       name: 'Bob (Authorized Viewer)',
       email: 'viewer@trustvault.local',
       pass: 'Viewer@TrustVault2026!',
-      desc: 'Has explicit READ grant to Doc 1 (MSA). Zero upload rights.'
+      badgeClass: 'role-VIEWER',
+      desc: 'Granted READ permission on Doc 1 (MSA). Zero upload rights. Rejects mutations.'
     },
     {
       role: 'VIEWER',
-      name: 'Eve (Adversary / Intruder)',
+      name: 'Eve (Untrusted Adversary)',
       email: 'eve@trustvault.local',
       pass: 'Eve@TrustVault2026!',
-      desc: 'Zero document grants. Probes receive 404 (Information barrier active).'
+      badgeClass: 'role-VIEWER',
+      desc: 'Zero grants across all documents. IDOR probes return 404 Information Barrier.'
     }
   ];
 
@@ -82,57 +86,82 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '24px'
+        padding: '32px 16px',
+        background: 'var(--bg-app)'
       }}
     >
-      <div style={{ textAlign: 'center', marginBottom: '28px' }}>
+      {/* Brand Header */}
+      <div style={{ textAlign: 'center', marginBottom: '24px' }}>
         <div
           style={{
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            width: '48px',
-            height: '48px',
-            background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(99, 102, 241, 0.2))',
-            border: '1px solid rgba(16, 185, 129, 0.4)',
-            borderRadius: 'var(--radius-md)',
-            color: 'var(--accent-emerald)',
-            marginBottom: '12px'
+            width: '42px',
+            height: '42px',
+            background: 'var(--color-primary-subtle)',
+            border: '1px solid var(--color-primary-border)',
+            borderRadius: 'var(--radius-sm)',
+            color: '#60a5fa',
+            marginBottom: '10px'
           }}
         >
-          <Shield size={24} />
+          <Shield size={22} />
         </div>
-        <h1 style={{ fontSize: '1.75rem', marginBottom: '6px' }}>TrustVault</h1>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', maxWidth: '380px' }}>
-          Zero-trust enterprise document engine with cryptographic audit ledger
+        <h1 style={{ fontSize: '18px', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
+          TrustVault Enterprise Security Console
+        </h1>
+        <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '2px' }}>
+          Zero-Trust Access Control & Tamper-Evident HMAC-SHA256 Audit Ledger
         </p>
       </div>
 
+      {/* Main Authentication Box */}
       <div
         style={{
           width: '100%',
-          maxWidth: '420px',
+          maxWidth: '400px',
           background: 'var(--bg-surface)',
-          border: '1px solid var(--border-subtle)',
-          borderRadius: 'var(--radius-lg)',
-          padding: '28px',
-          boxShadow: 'var(--shadow-subtle)',
-          marginBottom: '28px'
+          border: '1px solid var(--border-default)',
+          borderRadius: 'var(--radius-md)',
+          padding: '24px',
+          boxShadow: 'var(--shadow-elevation)',
+          marginBottom: '24px'
         }}
       >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            paddingBottom: '12px',
+            marginBottom: '16px',
+            borderBottom: '1px solid var(--border-subtle)',
+            fontSize: '12px',
+            color: 'var(--text-secondary)'
+          }}
+        >
+          <Lock size={13} color="var(--color-emerald)" />
+          <span>PostgreSQL-Backed Identity Verification</span>
+        </div>
+
         {error && (
           <div
             style={{
-              background: 'var(--accent-rose-subtle)',
-              border: '1px solid rgba(244, 63, 94, 0.3)',
-              color: 'var(--accent-rose)',
-              padding: '10px 14px',
+              background: 'var(--color-rose-subtle)',
+              border: '1px solid var(--color-rose-border)',
+              color: '#fca5a5',
+              padding: '8px 12px',
               borderRadius: 'var(--radius-sm)',
-              fontSize: '0.85rem',
-              marginBottom: '16px'
+              fontSize: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginBottom: '14px'
             }}
           >
-            {error}
+            <AlertCircle size={14} />
+            <span>{error}</span>
           </div>
         )}
 
@@ -146,7 +175,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                 placeholder="name@trustvault.local"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                style={{ width: '100%' }}
+                autoComplete="username"
               />
             </div>
           </div>
@@ -156,57 +185,76 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
             <input
               type="password"
               required
-              placeholder="••••••••••••"
+              placeholder="••••••••••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              style={{ width: '100%' }}
+              autoComplete="current-password"
             />
           </div>
 
           <button
             type="submit"
             className="btn btn-primary"
-            style={{ width: '100%', justifyContent: 'center', marginTop: '12px' }}
             disabled={isLoading}
+            style={{ width: '100%', marginTop: '8px', padding: '8px' }}
           >
-            {isLoading ? 'Verifying Credentials...' : 'Sign In to Vault'}
+            {isLoading ? 'Verifying Credentials...' : 'Authenticate & Enter Vault'}
+            <ArrowRight size={14} />
           </button>
         </form>
       </div>
 
-      {/* Evaluation Persona Fast-Switcher Cards */}
-      <div style={{ width: '100%', maxWidth: '960px' }}>
-        <div style={{ textAlign: 'center', marginBottom: '12px', fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-          Evaluation Seed Personas (Click to Login Instantly)
+      {/* Evaluation Principals Fast Selection */}
+      <div style={{ width: '100%', maxWidth: '780px' }}>
+        <div
+          style={{
+            fontSize: '11px',
+            fontWeight: 600,
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+            color: 'var(--text-muted)',
+            marginBottom: '10px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between'
+          }}
+        >
+          <span>Evaluation Principals (1-Click Test Harness)</span>
+          <span style={{ fontFamily: 'var(--font-mono)' }}>Timing-Attack Safe Bcrypt (12 Rounds)</span>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
           {personas.map((p) => (
             <div
               key={p.email}
               onClick={() => handleQuickPersona(p.email, p.pass)}
               style={{
-                background: 'var(--bg-card)',
-                border: '1px solid var(--border-subtle)',
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-default)',
                 borderRadius: 'var(--radius-sm)',
-                padding: '14px',
+                padding: '12px',
                 cursor: 'pointer',
-                transition: 'all 0.15s ease'
+                transition: 'all 0.12s ease'
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'rgba(16, 185, 129, 0.4)')}
-              onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border-subtle)')}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = 'var(--border-strong)';
+                e.currentTarget.style.background = 'var(--bg-surface-raised)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = 'var(--border-default)';
+                e.currentTarget.style.background = 'var(--bg-surface)';
+              }}
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                <span className={`role-tag role-${p.role}`}>{p.role}</span>
-                <ArrowRight size={14} color="var(--text-muted)" />
+                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>{p.name.split(' ')[0]}</span>
+                <span className={`role-pill ${p.badgeClass}`}>{p.role}</span>
               </div>
-              <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{p.name}</div>
-              <div className="mono" style={{ fontSize: '0.72rem', color: 'var(--accent-emerald)', marginBottom: '6px' }}>
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', marginBottom: '6px' }}>
                 {p.email}
               </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
+              <p style={{ fontSize: '11px', color: 'var(--text-dim)', lineHeight: 1.4 }}>
                 {p.desc}
-              </div>
+              </p>
             </div>
           ))}
         </div>

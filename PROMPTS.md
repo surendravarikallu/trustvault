@@ -144,3 +144,48 @@
   - Rewrote all controllers, middleware, and routes to import strictly from `src/dal/types`.
   - Re-ran `npm run lint` and `npm run build` to verify 100% compliance with zero restricted imports.
 * **Commit:** [`09130fd` - Enforced DAL, HMAC-SHA256 Audit Ledger, and Test Matrix](https://github.com/surendravarikallu/trustvault/commit/09130fd)
+
+---
+
+### Entry 7: AI-Generated UI Tropes vs. Professional Enterprise Security Console
+* **Date:** 2026-10-19
+* **Topic:** Frontend Aesthetics & Enterprise Usability
+* **What I Asked:**  
+  "Build the web interface for TrustVault to interact with documents, manage permissions, and inspect the audit ledger."
+* **What the AI Proposed:**  
+  The AI generated a frontend with classic "AI demo" visual tropes:
+  - Cheesy radial glowing neon cyan/purple background blobs.
+  - Unicode emojis in place of real vector icons (🛡️, 📄, ⚠️, 🤖, ✨).
+  - Floating marketing cards with low data density and excessive padding.
+  - "AI Reviewer Assistant" styled like a consumer chatbot with sparkling purple badges.
+* **What Was Wrong (Developer Intervention):**  
+  An enterprise security product (like HashiCorp Vault, AWS KMS, Cloudflare Zero Trust, or Datadog) demands high information density, precise typography, crisp 1px borders, monospace cryptographic checksums, and serious access governance controls. Fluffy neon glow aesthetics undermine credibility in a security audit.
+* **What I Did Instead:**  
+  - Overhauled `frontend/src/index.css` using an authentic Obsidian Dark enterprise design system (slate `#070a12`, `#0d131f`, and `#121a2b` surfaces; sharp 4px/6px radii; restrained high-contrast accents).
+  - Replaced all Unicode emojis with crisp vector icons from Lucide.
+  - Redesigned the "AI Assistant" as an **Automated Least-Privilege Policy Recommender** with clear risk scoring and mandatory dual-signature human confirmation.
+  - Built a dense tabular data grid with copy-to-clipboard SHA-256 fingerprints, environment status bars, and instant 1-click evaluation principal switches.
+* **Commit:** [`faa10bf` - Enterprise Frontend Client & Evaluation Personas](https://github.com/surendravarikallu/trustvault/commit/faa10bf)
+
+---
+
+### Entry 8: Un-narrated Audit Logs & Express BigInt Serialization Crash
+* **Date:** 2026-10-19
+* **Topic:** Audit Log Legibility, Event Narratives & BigInt JSON Serialization
+* **What I Asked:**  
+  "Display the audit ledger records in the admin dashboard so that auditors can inspect recent security events."
+* **What the AI Proposed:**  
+  The AI returned raw database rows directly from `prisma.auditLog.findMany()`, rendering raw enum strings like `USER_DEACTIVATED`, `ACCESS_DENIED`, or `DOCUMENT_DOWNLOAD_STARTED` alongside `N/A` target labels.
+* **What Was Wrong (Developer Intervention):**  
+  1. **Runtime 500 Crash:** `AuditLog.sequenceNumber` is stored as a PostgreSQL 64-bit `BigInt`. When Express called `res.json()`, Node's native `JSON.stringify` immediately threw:
+     `TypeError: Do not know how to serialize a BigInt`.
+  2. **Unintelligible to Auditors:** Showing `USER_DEACTIVATED` with target `N/A` gave no indication of *which user was deactivated* or *who deactivated them*. Similarly, downloads showed only the acting user without highlighting the affected document.
+* **What I Did Instead:**  
+  - In `src/dal/auditDal.ts`, mapped `sequenceNumber` to `.toString()` before returning paginated log queries.
+  - Implemented an **Event Narrative Engine (`formatAuditStory`)** in `frontend/src/components/AuditLedgerView.tsx` that generates human-readable, user-pointing sentences:
+    - *"admin@trustvault.local deactivated user demote_target@trustvault.local (Active sessions invalidated immediately)."*
+    - *"viewer@trustvault.local downloaded file Master Services Agreement (MSA) - Acme Corp."*
+    - *"owner@trustvault.local granted READ access on MSA Acme to viewer@trustvault.local."*
+    - *"Security Gatekeeper BLOCKED probe by eve@trustvault.local on Executive Compensation Review."*
+  - Added an expandable row details drawer showing client IP, user agent, preceding HMAC, current HMAC-SHA256, and raw log payload.
+* **Commit:** [`master` - Human-readable Event Narratives & BigInt Serialization Fix](https://github.com/surendravarikallu/trustvault)

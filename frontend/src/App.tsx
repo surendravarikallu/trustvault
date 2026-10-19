@@ -67,6 +67,9 @@ export const App: React.FC = () => {
     try {
       const data = await apiLogin(email, passwords[email]);
       handleLoginSuccess(data.token, data.user);
+      if (data.user.role !== 'ADMIN') {
+        setActiveTab('documents');
+      }
     } catch (err: any) {
       showToast('error', `Failed to switch persona: ${err.message}`);
     }
@@ -121,33 +124,34 @@ export const App: React.FC = () => {
     <div>
       <Navbar user={user} onLogout={handleLogout} onSwitchPersona={handleSwitchPersona} />
 
-      <main className="container">
+      <main className="workspace-container">
         {/* Navigation Tabs */}
-        <div className="tabs-nav">
+        <div className="nav-tabs">
           <button
-            className={`tab-btn ${activeTab === 'documents' ? 'active' : ''}`}
+            className={`nav-tab-btn ${activeTab === 'documents' ? 'active' : ''}`}
             onClick={() => setActiveTab('documents')}
           >
-            <FileText size={16} />
+            <FileText size={14} />
             <span>Vault Documents</span>
+            <span className="nav-tab-count">{documents.length}</span>
           </button>
 
           {isAdmin && (
             <>
               <button
-                className={`tab-btn ${activeTab === 'audit' ? 'active' : ''}`}
+                className={`nav-tab-btn ${activeTab === 'audit' ? 'active' : ''}`}
                 onClick={() => setActiveTab('audit')}
               >
-                <Shield size={16} />
+                <Shield size={14} />
                 <span>HMAC Audit Ledger</span>
               </button>
 
               <button
-                className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`}
+                className={`nav-tab-btn ${activeTab === 'users' ? 'active' : ''}`}
                 onClick={() => setActiveTab('users')}
               >
-                <UsersIcon size={16} />
-                <span>Enterprise Directory</span>
+                <UsersIcon size={14} />
+                <span>Identity Governance</span>
               </button>
             </>
           )}

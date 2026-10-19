@@ -17,7 +17,7 @@
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
-    "tunnel": "cloudflared tunnel --url http://127.0.0.1:5000"
+    "tunnel": "cloudflared tunnel --url http://127.0.0.1:7777"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

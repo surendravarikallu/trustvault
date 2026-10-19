@@ -17,7 +17,9 @@ adminRouter.use(authenticate, requireRole([Role.ADMIN]));
 
 adminRouter.get('/documents', getAdminDocuments);
 adminRouter.get('/audit-logs', getAuditTrail);
+adminRouter.get('/audit/logs', getAuditTrail);
 adminRouter.get('/audit-verify', verifyAuditLedger);
+adminRouter.get('/audit/verify', verifyAuditLedger);
 adminRouter.patch('/users/:id/role', changeUserRole);
 adminRouter.post('/users/:id/deactivate', deactivateUser);
 adminRouter.get('/users', getUsers);

@@ -280,5 +280,10 @@ export async function getAuditLogs(filter?: { action?: string; documentId?: stri
     })
   ]);
 
-  return { total, page, limit, logs };
+  const serializedLogs = logs.map((log) => ({
+    ...log,
+    sequenceNumber: log.sequenceNumber.toString()
+  }));
+
+  return { total, page, limit, logs: serializedLogs };
 }

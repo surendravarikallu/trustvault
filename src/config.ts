@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 export const config = {
-  port: parseInt(process.env.PORT || '5000', 10),
+  port: parseInt(process.env.PORT || '7777', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
   jwtSecret: process.env.JWT_SECRET || 'trustvault_jwt_secret_dev_key_2026_super_secure',
   auditHmacSecret: process.env.AUDIT_HMAC_SECRET || 'trustvault_hmac_secret_dev_key_2026_super_secure',

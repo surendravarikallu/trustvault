@@ -1,19 +1,25 @@
 import React, { useState } from 'react';
 import { X, Upload, AlertCircle } from 'lucide-react';
+import { uploadDocument } from '../api';
 
 interface UploadModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onUploadSuccess: () => void;
   token: string;
+  onUploadSuccess: () => void;
 }
 
-export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onUploadSuccess, token }) => {
-  const [title, setTitle] = useState('');
-  const [category, setCategory] = useState('Legal');
-  const [description, setDescription] = useState('');
+export const UploadModal: React.FC<UploadModalProps> = ({
+  isOpen,
+  onClose,
+  token,
+  onUploadSuccess
+}) => {
   const [file, setFile] = useState<File | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [category, setCategory] = useState('Legal');
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (!isOpen) return null;
@@ -25,45 +31,39 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onUpl
       return;
     }
 
-    setIsSubmitting(true);
+    setIsLoading(true);
     setError(null);
 
-    const formData = new FormData();
-    formData.append('title', title);
-    formData.append('category', category);
-    formData.append('description', description);
-    formData.append('file', file);
-
     try {
-      const res = await fetch('/api/documents', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData
-      });
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('title', title.trim() || file.name);
+      formData.append('description', description.trim());
+      formData.append('category', category);
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Upload failed.');
-      }
-
+      await uploadDocument(formData, token);
       onUploadSuccess();
       onClose();
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Upload failed.');
     } finally {
-      setIsSubmitting(false);
+      setIsLoading(false);
     }
   };
 
   return (
     <div className="modal-overlay">
-      <div className="modal-content">
+      <div className="modal-content" style={{ maxWidth: '520px' }}>
         <div className="modal-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Upload size={18} color="var(--accent-emerald)" />
-            <h3 style={{ fontSize: '1rem' }}>Upload Document to Vault</h3>
+            <Upload size={16} color="var(--color-primary)" />
+            <span style={{ fontWeight: 600, fontSize: '13px' }}>Upload Secure Document</span>
           </div>
-          <button className="btn btn-secondary btn-sm" onClick={onClose} style={{ padding: '4px' }}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+          >
             <X size={16} />
           </button>
         </div>
@@ -73,76 +73,80 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onUpl
             {error && (
               <div
                 style={{
+                  background: 'var(--color-rose-subtle)',
+                  border: '1px solid var(--color-rose-border)',
+                  color: '#fca5a5',
+                  padding: '8px 12px',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: '12px',
+                  marginBottom: '14px',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '8px',
-                  background: 'var(--accent-rose-subtle)',
-                  border: '1px solid rgba(244, 63, 94, 0.3)',
-                  color: 'var(--accent-rose)',
-                  padding: '10px 14px',
-                  borderRadius: 'var(--radius-sm)',
-                  fontSize: '0.85rem',
-                  marginBottom: '16px'
+                  gap: '8px'
                 }}
               >
-                <AlertCircle size={16} />
+                <AlertCircle size={14} />
                 <span>{error}</span>
               </div>
             )}
 
             <div className="form-group">
-              <label>Document Title *</label>
+              <label>Document Title</label>
               <input
                 type="text"
-                required
                 placeholder="e.g. Master Services Agreement 2026"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
+                required
               />
             </div>
 
             <div className="form-group">
-              <label>Category *</label>
+              <label>Classification Category</label>
               <select value={category} onChange={(e) => setCategory(e.target.value)}>
                 <option value="Legal">Legal</option>
                 <option value="Finance">Finance</option>
                 <option value="HR">HR</option>
                 <option value="Engineering">Engineering</option>
-                <option value="Executive">Executive</option>
                 <option value="Operations">Operations</option>
               </select>
             </div>
 
             <div className="form-group">
-              <label>Description (Optional)</label>
+              <label>Description / Purpose</label>
               <textarea
-                rows={2}
-                placeholder="Brief summary of document sensitivity and context..."
+                rows={3}
+                placeholder="Enterprise purpose, security classification, or retention instructions..."
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
               />
             </div>
 
             <div className="form-group">
-              <label>Select File (Max 15MB) *</label>
+              <label>Select File (Max 25MB)</label>
               <input
                 type="file"
                 required
-                onChange={(e) => setFile(e.target.files ? e.target.files[0] : null)}
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    setFile(e.target.files[0]);
+                    if (!title) setTitle(e.target.files[0].name.replace(/\.[^/.]+$/, ''));
+                  }
+                }}
                 style={{ padding: '8px' }}
               />
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px' }}>
-                Permitted extensions: <span className="mono">.pdf, .docx, .xlsx, .txt, .png, .jpg</span> (Magic bytes validated on upload)
+              <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '4px' }}>
+                Zero-Trust Signature Inspection: Permitted formats (.pdf, .png, .jpg, .docx, .xlsx, .txt). Windows PE (.exe/.dll) and Linux ELF binaries are rejected via magic-byte buffer analysis.
               </div>
             </div>
           </div>
 
           <div className="modal-footer">
-            <button type="button" className="btn btn-secondary" onClick={onClose}>
+            <button type="button" className="btn btn-secondary" onClick={onClose} disabled={isLoading}>
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
-              {isSubmitting ? 'Validating & Uploading...' : 'Upload & Hash'}
+            <button type="submit" className="btn btn-primary" disabled={isLoading}>
+              {isLoading ? 'Inspecting & Encrypting...' : 'Upload & Encrypt'}
             </button>
           </div>
         </form>

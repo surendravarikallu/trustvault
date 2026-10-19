@@ -15,6 +15,7 @@ export interface DocumentPermission {
   id: string;
   permissionLevel: PermissionLevel;
   expiresAt: string | null;
+  userId?: string;
   user: {
     id: string;
     name: string;
@@ -37,6 +38,8 @@ export interface VaultDocument {
   fileSize: number;
   mimeType: string;
   category: string;
+  fileHash?: string;
+  ownerId?: string;
   createdAt: string;
   updatedAt: string;
   owner: {

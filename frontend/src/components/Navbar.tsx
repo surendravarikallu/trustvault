@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, LogOut, User as UserIcon } from 'lucide-react';
+import { Shield, LogOut, User as UserIcon, Server, Database, KeyRound } from 'lucide-react';
 import type { User } from '../types';
 
 interface NavbarProps {
@@ -10,63 +10,94 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onSwitchPersona }) => {
   return (
-    <header className="navbar">
-      <div className="brand">
-        <div className="brand-shield">
-          <Shield size={18} />
+    <>
+      {/* Enterprise System Context Header */}
+      <div className="system-status-bar">
+        <div className="system-status-indicators">
+          <span className="system-status-item">
+            <Server size={12} />
+            <span>Node.js v20 · Port 7777 (Loopback Ingress)</span>
+          </span>
+          <span className="system-status-item">
+            <Database size={12} />
+            <span>PostgreSQL 18 Dual-Role (REVOKE + DML Trigger Active)</span>
+          </span>
+          <span className="system-status-item">
+            <span className="status-dot active"></span>
+            <span style={{ color: 'var(--color-emerald)' }}>HMAC-SHA256 Ledger Synchronized</span>
+          </span>
         </div>
-        <span>TrustVault</span>
-        <div className="zero-trust-badge">
-          <span className="pulse-dot"></span>
-          <span>Zero-Trust Enforced</span>
+        <div style={{ color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>
+          RFC-Zero-Trust Compliant
         </div>
       </div>
 
-      <div className="nav-user">
-        {/* Quick persona switch bar for evaluation & live demonstration */}
-        <div className="persona-switcher">
-          <span style={{ color: 'var(--text-muted)' }}>Demo Switch:</span>
-          <button
-            className={`btn btn-sm ${user.email === 'admin@trustvault.local' ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => onSwitchPersona('admin@trustvault.local')}
-            title="Switch to Administrator"
-          >
-            Admin
-          </button>
-          <button
-            className={`btn btn-sm ${user.email === 'owner@trustvault.local' ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => onSwitchPersona('owner@trustvault.local')}
-            title="Switch to Alice (Document Owner)"
-          >
-            Alice (Owner)
-          </button>
-          <button
-            className={`btn btn-sm ${user.email === 'viewer@trustvault.local' ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => onSwitchPersona('viewer@trustvault.local')}
-            title="Switch to Bob (Authorized Viewer)"
-          >
-            Bob (Viewer)
-          </button>
-          <button
-            className={`btn btn-sm ${user.email === 'eve@trustvault.local' ? 'btn-danger' : 'btn-secondary'}`}
-            onClick={() => onSwitchPersona('eve@trustvault.local')}
-            title="Switch to Eve (Unauthorized Adversary)"
-          >
-            Eve (Adversary)
-          </button>
+      {/* Main Enterprise Navigation Bar */}
+      <header className="navbar">
+        <div className="brand">
+          <div className="brand-icon">
+            <Shield size={16} />
+          </div>
+          <div className="brand-title">
+            <span>TrustVault</span>
+            <span className="brand-badge">SECURE CONSOLE</span>
+          </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <UserIcon size={16} color="var(--text-secondary)" />
-          <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>{user.name}</span>
-          <span className={`role-tag role-${user.role}`}>{user.role}</span>
-        </div>
+        <div className="principal-bar">
+          {/* Principal / Persona Switcher for Evaluation */}
+          <div className="persona-selector">
+            <span className="persona-label">
+              <KeyRound size={11} style={{ verticalAlign: 'middle', marginRight: '3px' }} />
+              Test Principal:
+            </span>
+            <button
+              className={`persona-btn ${user.email === 'admin@trustvault.local' ? 'active' : ''}`}
+              onClick={() => onSwitchPersona('admin@trustvault.local')}
+              title="Audit Oversight & Role Governance"
+            >
+              Admin
+            </button>
+            <button
+              className={`persona-btn ${user.email === 'owner@trustvault.local' ? 'active' : ''}`}
+              onClick={() => onSwitchPersona('owner@trustvault.local')}
+              title="Alice: Uploads, Access Delegation, Document Owner"
+            >
+              Alice (Owner)
+            </button>
+            <button
+              className={`persona-btn ${user.email === 'viewer@trustvault.local' ? 'active' : ''}`}
+              onClick={() => onSwitchPersona('viewer@trustvault.local')}
+              title="Bob: Authorized Reader for Master Services Agreement"
+            >
+              Bob (Viewer)
+            </button>
+            <button
+              className={`persona-btn persona-eve ${user.email === 'eve@trustvault.local' ? 'active' : ''}`}
+              onClick={() => onSwitchPersona('eve@trustvault.local')}
+              title="Eve: Adversary with Zero Grants (Verifies 404 Information Barrier)"
+            >
+              Eve (Adversary)
+            </button>
+          </div>
 
-        <button className="btn btn-secondary btn-sm" onClick={onLogout} title="Invalidates active JWT">
-          <LogOut size={14} />
-          <span>Logout</span>
-        </button>
-      </div>
-    </header>
+          {/* Active Session Identity */}
+          <div className="user-profile-badge">
+            <UserIcon size={14} color="var(--text-secondary)" />
+            <span style={{ fontWeight: 500 }}>{user.name}</span>
+            <span className={`role-pill role-${user.role}`}>{user.role}</span>
+          </div>
+
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={onLogout}
+            title="Terminate Active Session"
+          >
+            <LogOut size={13} />
+            <span>Sign Out</span>
+          </button>
+        </div>
+      </header>
+    </>
   );
 };

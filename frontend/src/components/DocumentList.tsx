@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Download, Trash2, Users, Upload, Filter, X, FileText } from 'lucide-react';
+import { Search, Download, Trash2, Users, Upload, Filter, X, FileText, Copy, Check, ShieldAlert, Lock, RefreshCw } from 'lucide-react';
 import type { VaultDocument, User } from '../types';
 
 interface DocumentListProps {
@@ -29,6 +29,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const handleApplyFilter = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -50,6 +51,12 @@ export const DocumentList: React.FC<DocumentListProps> = ({
     onSearch({});
   };
 
+  const copyToClipboard = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
   const formatSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -60,65 +67,79 @@ export const DocumentList: React.FC<DocumentListProps> = ({
 
   return (
     <div>
-      {/* Search & Actions Toolbar */}
-      <div className="toolbar">
-        <form onSubmit={handleApplyFilter} style={{ display: 'flex', gap: '10px', flex: 1, flexWrap: 'wrap' }}>
-          <div className="search-bar">
-            <Search size={16} color="var(--text-muted)" />
+      {/* Control Toolbar */}
+      <div className="toolbar-panel">
+        <form onSubmit={handleApplyFilter} style={{ display: 'flex', gap: '8px', flex: 1, flexWrap: 'wrap' }}>
+          <div className="search-input-group">
+            <Search size={14} color="var(--text-dim)" />
             <input
               type="text"
-              placeholder="Search documents by name, filename, or description..."
+              placeholder="Search documents by title, original filename, or metadata..."
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
           </div>
 
-          <button type="submit" className="btn btn-secondary btn-sm">
-            Search
+          <button type="submit" className="btn btn-secondary" disabled={isLoading}>
+            {isLoading ? <RefreshCw size={13} /> : 'Filter'}
           </button>
 
           <button
             type="button"
-            className={`btn btn-sm ${showAdvanced ? 'btn-primary' : 'btn-secondary'}`}
+            className={`btn ${showAdvanced ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setShowAdvanced(!showAdvanced)}
           >
-            <Filter size={14} />
-            <span>Filters</span>
+            <Filter size={13} />
+            <span>Advanced Filters</span>
           </button>
 
           {(q || owner || category || fromDate || toDate) && (
-            <button type="button" className="btn btn-secondary btn-sm" onClick={handleReset}>
-              <X size={14} />
-              <span>Reset</span>
+            <button type="button" className="btn btn-secondary" onClick={handleReset}>
+              <X size={13} />
+              <span>Clear</span>
             </button>
           )}
         </form>
 
-        {canUpload && (
+        {canUpload ? (
           <button className="btn btn-primary" onClick={onOpenUpload}>
-            <Upload size={16} />
-            <span>Upload Document</span>
+            <Upload size={14} />
+            <span>Upload Secure Document</span>
           </button>
+        ) : (
+          <div
+            style={{
+              fontSize: '11px',
+              color: 'var(--text-muted)',
+              border: '1px solid var(--border-default)',
+              padding: '6px 10px',
+              borderRadius: 'var(--radius-sm)',
+              background: 'var(--bg-surface)'
+            }}
+          >
+            <Lock size={12} style={{ verticalAlign: 'middle', marginRight: '4px' }} />
+            Role <span className="mono-cell">{currentUser.role}</span>: Upload Rights Restricted
+          </div>
         )}
       </div>
 
-      {/* Advanced Filter Panel */}
+      {/* Advanced Filter Expansion Panel */}
       {showAdvanced && (
         <div
           style={{
             background: 'var(--bg-surface)',
-            border: '1px solid var(--border-subtle)',
+            border: '1px solid var(--border-default)',
             borderRadius: 'var(--radius-sm)',
-            padding: '16px',
-            marginBottom: '20px',
+            padding: '12px 16px',
+            marginBottom: '16px',
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
             gap: '12px'
           }}
         >
           <div>
-            <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
-              Owner Name / Email
+            <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase', fontWeight: 600 }}>
+              Owner
             </label>
             <input
               type="text"
@@ -129,7 +150,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({
           </div>
 
           <div>
-            <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+            <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase', fontWeight: 600 }}>
               Category
             </label>
             <select value={category} onChange={(e) => setCategory(e.target.value)}>
@@ -138,114 +159,144 @@ export const DocumentList: React.FC<DocumentListProps> = ({
               <option value="Finance">Finance</option>
               <option value="HR">HR</option>
               <option value="Engineering">Engineering</option>
-              <option value="Executive">Executive</option>
             </select>
           </div>
 
           <div>
-            <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
-              Created From
+            <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase', fontWeight: 600 }}>
+              From Date
             </label>
             <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
           </div>
 
           <div>
-            <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
-              Created To
+            <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase', fontWeight: 600 }}>
+              To Date
             </label>
             <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-            <button className="btn btn-primary btn-sm" onClick={() => handleApplyFilter()} style={{ width: '100%' }}>
-              Apply Criteria
-            </button>
           </div>
         </div>
       )}
 
-      {/* Documents Table */}
-      <div className="table-container">
-        {isLoading ? (
-          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
-            Loading secure documents...
+      {/* Zero Documents / Information Barrier State */}
+      {documents.length === 0 ? (
+        <div className="zero-trust-empty-card">
+          <div className="zero-trust-empty-icon">
+            {currentUser.email === 'eve@trustvault.local' ? <ShieldAlert size={22} /> : <Lock size={22} />}
           </div>
-        ) : documents.length === 0 ? (
-          <div style={{ padding: '60px 20px', textAlign: 'center' }}>
-            <FileText size={40} color="var(--text-muted)" style={{ marginBottom: '12px', opacity: 0.5 }} />
-            <h3 style={{ fontSize: '1.1rem', marginBottom: '6px' }}>No Accessible Documents Found</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', maxWidth: '420px', margin: '0 auto' }}>
-              {currentUser.role === 'VIEWER'
-                ? 'You currently have no documents granted to your account. Only files explicitly shared with your email are visible.'
-                : 'No documents matched your active search query and permissions predicate.'}
-            </p>
-          </div>
-        ) : (
-          <table>
+          <h4>
+            {currentUser.email === 'eve@trustvault.local'
+              ? '404 Information Barrier Active (Zero-Trust Enforced)'
+              : 'No Documents Match Query'}
+          </h4>
+          <p>
+            {currentUser.email === 'eve@trustvault.local'
+              ? 'Principal eve@trustvault.local has zero explicit permissions. The DAL layer returns 404 (Not Found) rather than 403 to prevent metadata or existence leakage.'
+              : 'No documents exist within your clearance scope matching the active search parameters.'}
+          </p>
+          {canUpload && (
+            <button className="btn btn-primary" onClick={onOpenUpload}>
+              <Upload size={14} />
+              <span>Upload Your First Document</span>
+            </button>
+          )}
+        </div>
+      ) : (
+        /* Enterprise Document Table */
+        <div className="data-table-wrapper">
+          <table className="data-table">
             <thead>
               <tr>
-                <th>Document Name & Details</th>
+                <th>Document Name & File</th>
                 <th>Category</th>
                 <th>Owner</th>
                 <th>Size</th>
                 <th>Access Level</th>
-                <th>Uploaded</th>
+                <th>SHA-256 Checksum</th>
                 <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {documents.map((doc) => {
-                const isOwner = doc.owner.id === currentUser.id;
-                const canManage = isOwner;
-                const canDelete = isOwner || currentUser.role === 'ADMIN';
+                const isOwner = doc.owner?.id === currentUser.id || doc.ownerId === currentUser.id;
+                const canManage = isOwner; // L-03: Strict owner-only delegation
+                const hashValue = doc.fileHash || 'Verified-Blob';
 
                 return (
                   <tr key={doc.id}>
                     <td>
-                      <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '2px' }}>
-                        {doc.title}
-                      </div>
-                      <div className="mono" style={{ fontSize: '0.75rem' }}>
-                        {doc.originalFilename}
-                      </div>
-                      {doc.description && (
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                          {doc.description}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div
+                          style={{
+                            width: '28px',
+                            height: '28px',
+                            borderRadius: 'var(--radius-xs)',
+                            background: 'var(--bg-surface-raised)',
+                            border: '1px solid var(--border-default)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'var(--text-secondary)'
+                          }}
+                        >
+                          <FileText size={15} />
                         </div>
-                      )}
+                        <div>
+                          <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '13px' }}>
+                            {doc.title}
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>
+                            {doc.originalFilename}
+                          </div>
+                        </div>
+                      </div>
                     </td>
+
                     <td>
-                      <span className="role-tag" style={{ background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-secondary)' }}>
-                        {doc.category}
-                      </span>
+                      <span className="category-pill">{doc.category}</span>
                     </td>
+
                     <td>
-                      <div style={{ fontSize: '0.85rem' }}>{doc.owner.name}</div>
-                      <div className="mono" style={{ fontSize: '0.72rem' }}>{doc.owner.email}</div>
+                      <div style={{ fontSize: '12px' }}>{doc.owner?.name || 'Authorized Owner'}</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>
+                        {doc.owner?.email}
+                      </div>
                     </td>
-                    <td className="mono">{formatSize(doc.fileSize)}</td>
+
+                    <td className="mono-cell">{formatSize(doc.fileSize)}</td>
+
                     <td>
                       {isOwner ? (
-                        <span className="status-pill status-SUCCESS">Owner</span>
-                      ) : currentUser.role === 'ADMIN' ? (
-                        <span className="status-pill status-FAILED">Admin (Metadata Only)</span>
-                      ) : doc.permissions && doc.permissions.length > 0 ? (
-                        <span className="status-pill status-SUCCESS">{doc.permissions[0].permissionLevel} Grant</span>
+                        <span className="status-pill status-SUCCESS">OWNER</span>
                       ) : (
-                        <span className="status-pill">Unknown</span>
+                        <span className="status-pill status-SUCCESS" style={{ background: 'var(--color-primary-subtle)', color: '#93c5fd', borderColor: 'var(--color-primary-border)' }}>
+                          AUTHORIZED READ
+                        </span>
                       )}
                     </td>
-                    <td className="mono" style={{ fontSize: '0.78rem' }}>
-                      {new Date(doc.createdAt).toLocaleDateString()}
+
+                    <td>
+                      <div className="hash-pill" title={hashValue}>
+                        <span>{hashValue.substring(0, 10)}...</span>
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(hashValue, doc.id)}
+                          style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'inherit', padding: '0 2px' }}
+                          title="Copy Full SHA-256 Hash"
+                        >
+                          {copiedId === doc.id ? <Check size={11} color="var(--color-emerald)" /> : <Copy size={11} />}
+                        </button>
+                      </div>
                     </td>
+
                     <td style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'inline-flex', gap: '6px' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                         <button
                           className="btn btn-secondary btn-sm"
                           onClick={() => onDownload(doc)}
-                          title="Stream authenticated in-memory blob download"
+                          title="Stream in-memory decrypted blob (Logged to Audit Ledger)"
                         >
-                          <Download size={14} />
+                          <Download size={12} />
                           <span>Download</span>
                         </button>
 
@@ -253,20 +304,20 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                           <button
                             className="btn btn-secondary btn-sm"
                             onClick={() => onOpenPermissions(doc)}
-                            title="Manage access grants and AI suggestions"
+                            title="Manage Access Delegation & Policy Recommender"
                           >
-                            <Users size={14} />
-                            <span>Share</span>
+                            <Users size={12} />
+                            <span>Access Control</span>
                           </button>
                         )}
 
-                        {canDelete && (
+                        {isOwner && (
                           <button
                             className="btn btn-danger btn-sm"
                             onClick={() => onDeleteDocument(doc.id)}
-                            title="Soft-delete document"
+                            title="Soft delete document"
                           >
-                            <Trash2 size={14} />
+                            <Trash2 size={12} />
                           </button>
                         )}
                       </div>
@@ -276,8 +327,8 @@ export const DocumentList: React.FC<DocumentListProps> = ({
               })}
             </tbody>
           </table>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, UserPlus, Trash2, Sparkles, Clock, ShieldCheck, AlertCircle } from 'lucide-react';
+import { X, UserPlus, Trash2, ShieldCheck, AlertCircle, CheckCircle2 } from 'lucide-react';
 import type { VaultDocument, DocumentPermission, ReviewerSuggestion, PermissionLevel } from '../types';
 import {
   fetchDocumentPermissions,
@@ -26,7 +26,6 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
   const [permissionLevel, setPermissionLevel] = useState<PermissionLevel>('READ');
   const [expiresAt, setExpiresAt] = useState('');
   const [suggestions, setSuggestions] = useState<ReviewerSuggestion[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -43,14 +42,11 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
   if (!isOpen || !document) return null;
 
   const loadGrantees = async () => {
-    setIsLoading(true);
     try {
       const data = await fetchDocumentPermissions(document.id, token);
       setGrantees(data);
     } catch (err: any) {
       setError(err.message);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -109,39 +105,58 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
 
   return (
     <div className="modal-overlay">
-      <div className="modal-content" style={{ maxWidth: '680px' }}>
+      <div className="modal-content" style={{ maxWidth: '640px' }}>
         <div className="modal-header">
-          <div>
-            <h3 style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <ShieldCheck size={18} color="var(--accent-emerald)" />
-              <span>Manage Permissions: {document.title}</span>
-            </h3>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-              Document Owner: <span style={{ color: 'var(--text-primary)' }}>{document.owner.name}</span> ({document.owner.email})
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <ShieldCheck size={16} color="var(--color-emerald)" />
+            <span style={{ fontWeight: 600, fontSize: '13px' }}>
+              Access Control List: {document.title}
+            </span>
           </div>
-          <button className="btn btn-secondary btn-sm" onClick={onClose} style={{ padding: '4px' }}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+          >
             <X size={16} />
           </button>
         </div>
 
-        <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+        <div className="modal-body">
+          {/* Owner non-transferability badge (L-03) */}
+          <div
+            style={{
+              background: 'var(--bg-surface-raised)',
+              border: '1px solid var(--border-default)',
+              borderRadius: 'var(--radius-sm)',
+              padding: '10px 14px',
+              fontSize: '11px',
+              color: 'var(--text-secondary)',
+              marginBottom: '16px'
+            }}
+          >
+            <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '2px' }}>
+              Document Owner: {document.owner.name} ({document.owner.email})
+            </div>
+            <span>Enforced Rule (L-03): Only the document owner can grant or revoke permissions. Editors cannot elevate other users.</span>
+          </div>
+
           {error && (
             <div
               style={{
+                background: 'var(--color-rose-subtle)',
+                border: '1px solid var(--color-rose-border)',
+                color: '#fca5a5',
+                padding: '8px 12px',
+                borderRadius: 'var(--radius-sm)',
+                fontSize: '12px',
+                marginBottom: '14px',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '8px',
-                background: 'var(--accent-rose-subtle)',
-                border: '1px solid rgba(244, 63, 94, 0.3)',
-                color: 'var(--accent-rose)',
-                padding: '10px 14px',
-                borderRadius: 'var(--radius-sm)',
-                fontSize: '0.85rem',
-                marginBottom: '16px'
+                gap: '8px'
               }}
             >
-              <AlertCircle size={16} />
+              <AlertCircle size={14} />
               <span>{error}</span>
             </div>
           )}
@@ -149,212 +164,207 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
           {successMsg && (
             <div
               style={{
+                background: 'var(--color-emerald-subtle)',
+                border: '1px solid var(--color-emerald-border)',
+                color: '#6ee7b7',
+                padding: '8px 12px',
+                borderRadius: 'var(--radius-sm)',
+                fontSize: '12px',
+                marginBottom: '14px',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '8px',
-                background: 'var(--accent-emerald-subtle)',
-                border: '1px solid rgba(16, 185, 129, 0.3)',
-                color: 'var(--accent-emerald)',
-                padding: '10px 14px',
-                borderRadius: 'var(--radius-sm)',
-                fontSize: '0.85rem',
-                marginBottom: '16px'
+                gap: '8px'
               }}
             >
-              <ShieldCheck size={16} />
+              <CheckCircle2 size={14} />
               <span>{successMsg}</span>
             </div>
           )}
 
-          {/* Current Grantees List */}
-          <div style={{ marginBottom: '24px' }}>
-            <h4 style={{ fontSize: '0.875rem', marginBottom: '8px', color: 'var(--text-secondary)' }}>
-              Active Authorized Grantees ({grantees.length})
-            </h4>
-
-            {isLoading ? (
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Loading access list...</div>
-            ) : grantees.length === 0 ? (
-              <div style={{ padding: '16px', background: 'var(--bg-void)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                No active grants. Only the document owner can access this file.
-              </div>
-            ) : (
-              <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
-                <table style={{ fontSize: '0.825rem' }}>
-                  <thead>
-                    <tr>
-                      <th>Collaborator</th>
-                      <th>Grant Level</th>
-                      <th>Expires</th>
-                      <th style={{ textAlign: 'right' }}>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {grantees.map((g) => (
-                      <tr key={g.id}>
-                        <td>
-                          <div style={{ fontWeight: 500 }}>{g.user.name}</div>
-                          <div className="mono" style={{ fontSize: '0.725rem' }}>{g.user.email}</div>
-                        </td>
-                        <td>
-                          <span className={`status-pill ${g.permissionLevel === 'EDIT' ? 'status-SUCCESS' : ''}`}>
-                            {g.permissionLevel}
-                          </span>
-                        </td>
-                        <td className="mono" style={{ fontSize: '0.75rem' }}>
-                          {g.expiresAt ? (
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <Clock size={12} />
-                              {new Date(g.expiresAt).toLocaleDateString()}
-                            </span>
-                          ) : (
-                            'Permanent'
-                          )}
-                        </td>
-                        <td style={{ textAlign: 'right' }}>
-                          <button
-                            className="btn btn-danger btn-sm"
-                            onClick={() => handleRevoke(g.user.id, g.user.email)}
-                            title="Instant Revocation"
-                          >
-                            <Trash2 size={12} />
-                            <span>Revoke</span>
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {/* Grant New Permission Form */}
+          {/* Least-Privilege Policy Recommender */}
           <div
             style={{
-              background: 'rgba(255, 255, 255, 0.02)',
-              border: '1px solid var(--border-subtle)',
+              background: 'var(--bg-surface-raised)',
+              border: '1px solid var(--border-default)',
               borderRadius: 'var(--radius-sm)',
-              padding: '16px',
-              marginBottom: '20px'
+              padding: '12px',
+              marginBottom: '16px'
             }}
           >
-            <h4 style={{ fontSize: '0.875rem', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <UserPlus size={16} color="var(--accent-emerald)" />
-              <span>Grant New Access</span>
-            </h4>
-
-            <form onSubmit={handleGrant}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr', gap: '10px', marginBottom: '10px' }}>
-                <div>
-                  <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
-                    User Email *
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    placeholder="colleague@trustvault.local"
-                    value={targetEmail}
-                    onChange={(e) => setTargetEmail(e.target.value)}
-                  />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <div>
+                <span style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#93c5fd' }}>
+                  Least-Privilege Policy Recommender
+                </span>
+                <div style={{ fontSize: '11px', color: 'var(--text-dim)' }}>
+                  Evaluates document classification and recommends least-privilege candidate reviewers.
                 </div>
-
-                <div>
-                  <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
-                    Permission Level *
-                  </label>
-                  <select
-                    value={permissionLevel}
-                    onChange={(e) => setPermissionLevel(e.target.value as PermissionLevel)}
-                  >
-                    <option value="READ">READ (View/Download)</option>
-                    <option value="EDIT">EDIT (Replace Versions)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
-                    Expiration (Optional)
-                  </label>
-                  <input
-                    type="date"
-                    value={expiresAt}
-                    onChange={(e) => setExpiresAt(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <button type="submit" className="btn btn-primary btn-sm">
-                  Confirm & Grant Permission
-                </button>
-              </div>
-            </form>
-          </div>
-
-          {/* AI-Assisted Reviewer Suggestion Section */}
-          <div
-            style={{
-              background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.06), rgba(16, 185, 129, 0.03))',
-              border: '1px solid rgba(99, 102, 241, 0.25)',
-              borderRadius: 'var(--radius-sm)',
-              padding: '16px'
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Sparkles size={16} color="var(--accent-indigo)" />
-                <h4 style={{ fontSize: '0.875rem' }}>AI Reviewer Assistant</h4>
               </div>
               <button
                 type="button"
-                className="btn btn-secondary btn-sm"
+                className="btn btn-secondary btn-xs"
                 onClick={handleGetAISuggestions}
                 disabled={isSuggesting}
               >
-                {isSuggesting ? 'Analyzing...' : 'Suggest Reviewers'}
+                {isSuggesting ? 'Analyzing Metadata...' : 'Run Policy Analysis'}
               </button>
             </div>
 
-            <p style={{ fontSize: '0.775rem', color: 'var(--text-muted)', marginBottom: '12px' }}>
-              The AI analyzes document metadata and suggests candidate reviewers. <strong>The machine never widens access automatically</strong>; you must explicitly confirm any grant. Both suggestions and decisions are audited.
-            </p>
-
             {suggestions.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {suggestions.map((s) => (
                   <div
                     key={s.userId}
                     style={{
+                      background: 'var(--bg-surface)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-xs)',
+                      padding: '8px 10px',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'space-between',
-                      background: 'rgba(0, 0, 0, 0.3)',
-                      padding: '8px 12px',
-                      borderRadius: 'var(--radius-sm)',
-                      fontSize: '0.8rem'
+                      justifyContent: 'space-between'
                     }}
                   >
                     <div>
-                      <div style={{ fontWeight: 500 }}>{s.name} <span className="mono" style={{ color: 'var(--text-muted)' }}>({s.email})</span></div>
-                      <div style={{ fontSize: '0.725rem', color: 'var(--accent-indigo)' }}>{s.rationale}</div>
+                      <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-primary)' }}>
+                        {s.name} <span className="mono-cell" style={{ fontSize: '10px' }}>({s.email})</span>
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '2px' }}>
+                        Rationale: {s.rationale} · Suggested Level: <span className="mono-cell" style={{ color: '#93c5fd' }}>{s.suggestedPermissionLevel}</span>
+                      </div>
                     </div>
                     <button
                       type="button"
-                      className="btn btn-secondary btn-sm"
+                      className="btn btn-secondary btn-xs"
                       onClick={() => applySuggestion(s)}
                     >
-                      Pre-fill ({s.suggestedPermissionLevel})
+                      Apply To Form
                     </button>
                   </div>
                 ))}
               </div>
             )}
           </div>
+
+          {/* Grant Permission Form */}
+          <form onSubmit={handleGrant} style={{ marginBottom: '20px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-muted)', marginBottom: '8px' }}>
+              Delegate Access Grant
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.2fr 1.5fr auto', gap: '8px', alignItems: 'end' }}>
+              <div>
+                <label style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-dim)', display: 'block', marginBottom: '3px' }}>
+                  User Email
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder="name@trustvault.local"
+                  value={targetEmail}
+                  onChange={(e) => setTargetEmail(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-dim)', display: 'block', marginBottom: '3px' }}>
+                  Permission
+                </label>
+                <select value={permissionLevel} onChange={(e) => setPermissionLevel(e.target.value as PermissionLevel)}>
+                  <option value="READ">READ (View / Stream)</option>
+                  <option value="EDIT">EDIT (Update Metadata)</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-dim)', display: 'block', marginBottom: '3px' }}>
+                  Expiration (Optional)
+                </label>
+                <input
+                  type="date"
+                  value={expiresAt}
+                  onChange={(e) => setExpiresAt(e.target.value)}
+                />
+              </div>
+
+              <button type="submit" className="btn btn-primary" style={{ padding: '7px 12px' }}>
+                <UserPlus size={13} />
+                <span>Grant</span>
+              </button>
+            </div>
+          </form>
+
+          {/* Active Grantees List */}
+          <div>
+            <div style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-muted)', marginBottom: '8px' }}>
+              Active Authorized Grantees ({grantees.length})
+            </div>
+
+            {grantees.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '16px', background: 'var(--bg-surface-raised)', borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)', fontSize: '12px' }}>
+                No explicit grants active. Only owner has access.
+              </div>
+            ) : (
+              <div className="data-table-wrapper">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Grantee</th>
+                      <th>Permission</th>
+                      <th>Expiration</th>
+                      <th style={{ textAlign: 'right' }}>Revoke</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {grantees.map((g) => {
+                      const targetUserId = g.user?.id || g.userId || '';
+                      return (
+                        <tr key={g.id}>
+                          <td>
+                            <div style={{ fontWeight: 500, fontSize: '12px' }}>{g.user?.name}</div>
+                            <div className="mono-cell" style={{ fontSize: '10px', color: 'var(--text-dim)' }}>
+                              {g.user?.email}
+                            </div>
+                          </td>
+
+                          <td>
+                            <span className="category-pill" style={{ borderColor: 'var(--color-primary-border)', color: '#93c5fd' }}>
+                              {g.permissionLevel}
+                            </span>
+                          </td>
+
+                          <td className="mono-cell" style={{ fontSize: '11px' }}>
+                            {g.expiresAt ? (
+                              <span style={{ color: 'var(--color-amber)' }}>
+                                Expires {new Date(g.expiresAt).toLocaleDateString()}
+                              </span>
+                            ) : (
+                              <span style={{ color: 'var(--text-dim)' }}>Permanent</span>
+                            )}
+                          </td>
+
+                          <td style={{ textAlign: 'right' }}>
+                            <button
+                              type="button"
+                              className="btn btn-danger btn-xs"
+                              onClick={() => handleRevoke(targetUserId, g.user?.email || 'user')}
+                              title="Instant Revocation (Enforces L-02: immediate 404)"
+                            >
+                              <Trash2 size={11} />
+                              <span>Revoke</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={onClose}>
+          <button type="button" className="btn btn-secondary" onClick={onClose}>
             Close
           </button>
         </div>

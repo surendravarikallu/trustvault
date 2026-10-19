@@ -50,7 +50,10 @@ app.use('/api/documents', documentRouter);
 app.use('/api/admin', adminRouter);
 
 // 8. Serve built frontend SPA if frontend/dist exists
-const frontendDist = path.resolve(__dirname, '../frontend/dist');
+const frontendDist = fs.existsSync(path.resolve(process.cwd(), 'frontend/dist'))
+  ? path.resolve(process.cwd(), 'frontend/dist')
+  : path.resolve(__dirname, '../../frontend/dist');
+
 if (fs.existsSync(frontendDist)) {
   app.use(express.static(frontendDist));
   app.get('*', (req: Request, res: Response, next: NextFunction) => {
