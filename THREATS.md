@@ -1,102 +1,197 @@
-# TrustVault — Threat Model & Security Architecture (`THREATS.md`)
+# TrustVault — Threat Model & Security Matrix (THREATS.md)
 
-This document details the threat landscape evaluated for **TrustVault**, the exact technical mitigations implemented in the codebase, our testing strategy to prove defenses, and the known risks deliberately accepted with their architectural rationale.
-
----
-
-## 1. Threat Matrix Summary
-
-| Threat ID | Threat Category | Description | Technical Mitigation in TrustVault | Test Case | Status |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **THREAT-01** | **IDOR** | Insecure Direct Object Reference on document download or metadata view | Centralized `verifyDocumentAccess` middleware queries the database for explicit ownership or active named permission. Never trusts client IDs. | `test_idor_unauthorized_download_returns_403` | **Mitigated** |
-| **THREAT-02** | **Revocation Lag** | "Zombie access" where revoked users still download files via stale tokens or cached permissions | No permissions are stored in JWTs. The authorization gatekeeper executes a real-time database query on every single request. Revocation takes effect instantaneously. | `test_immediate_revocation_denies_access_without_delay` | **Mitigated** |
-| **THREAT-03** | **Direct Storage Exposure** | Attacker accesses raw files directly through web server URL bypassing API | Files are stored completely outside public web root with random UUIDv4 names (no original extensions). Served exclusively via authenticated streaming controllers. | `test_direct_filesystem_path_unreachable` | **Mitigated** |
-| **THREAT-04** | **Audit Log Tampering** | Rogue actor or attacker modifies or deletes audit logs to erase evidence | Append-only audit table with cryptographic hash chaining (SHA-256 ledger: `hash = SHA256(prevHash + id + timestamp + userId + action + details)`). Tampering breaks chain validation. | `test_audit_chain_integrity_verification` | **Mitigated** |
-| **THREAT-05** | **Privilege Escalation** | Viewer attempts to grant themselves permissions or alter document metadata | Role and ownership check in `permissionController`: only Document Owners and Administrators can mutate document grants or delete documents. | `test_viewer_cannot_grant_permissions_returns_403` | **Mitigated** |
-| **THREAT-06** | **Malicious File Uploads** | Disguised executables (e.g., `.exe` renamed to `.pdf`) or malicious scripts uploaded | Multi-stage upload validation: Extension whitelist, MIME type inspection, file magic byte analysis (`file-type`), and strict file size enforcement. Served with `nosniff`. | `test_malicious_executable_disguised_as_pdf_rejected` | **Mitigated** |
-| **THREAT-07** | **Metadata Leakage** | Attacker learns confidential document titles or owners via search/list queries | Search and list queries enforce database-level row filtering: `WHERE ownerId = :currentUserId OR id IN (SELECT documentId FROM permissions WHERE userId = :currentUserId)`. | `test_search_does_not_leak_unauthorized_metadata` | **Mitigated** |
-| **THREAT-08** | **Reconnaissance / Silent Probe** | Attacker probes unauthorized document IDs without triggering logs | Failed and unauthorized access attempts are explicitly captured in the audit trail as `ACCESS_DENIED` with IP, timestamp, user, and target document before returning HTTP 403. | `test_refused_access_creates_audit_log_entry` | **Mitigated** |
-| **THREAT-09** | **Content Spoofing / XSS** | Attacker uploads malicious SVG or HTML file that executes script when viewed | Binary files are served with headers: `Content-Disposition: attachment`, `Content-Security-Policy: default-src 'none'`, and `X-Content-Type-Options: nosniff`. | `test_svg_html_payload_forced_attachment_and_sanitized` | **Mitigated** |
-| **THREAT-10** | **Session Hijacking / Replay** | Attacker intercepts auth token or session to act as legitimate user | HttpOnly secure cookies / short-lived JWTs with CSRF tokens. Re-authentication option for sensitive admin actions. | `test_invalid_token_returns_401` | **Mitigated** |
+> **Document Status:** Comprehensive Threat Specification  
+> **Last Updated:** 2026-10-19  
+> **System Architecture:** Node.js (Express + TypeScript), PostgreSQL (Dual DB Roles), Prisma ORM + Zod, React (Vite + TypeScript)
 
 ---
 
-## 2. In-Depth Threat Analysis & Defense Architecture
+## 1. Threat Modeling Methodology & System Boundaries
 
-### Threat 01: Insecure Direct Object References (IDOR)
-- **Attack Scenario**: User `Bob` (Viewer) has access to Document `DOC-101`. Bob modifies his browser request or curl script to `GET /api/documents/DOC-102/download` (belonging to Alice).
-- **Vulnerability Root Cause**: Naive systems look up `SELECT * FROM documents WHERE id = :id` and stream the file without checking whether `currentUserId` is the owner or has an active grant.
-- **TrustVault Mitigation**:
-  Every file read, download, edit, or delete route passes through the `authorizeDocumentAccess(requiredLevel: 'read' | 'edit')` middleware:
-  ```typescript
-  // src/middleware/permissions.ts
-  const hasAccess = await checkDocumentPermission(userId, documentId, requiredLevel);
-  if (!hasAccess) {
-    await recordAuditLog({
-      action: 'ACCESS_DENIED',
-      userId,
-      documentId,
-      status: 'BLOCKED',
-      details: `Attempted unauthorized ${requiredLevel} access`
-    });
-    return res.status(403).json({ error: 'Access denied: insufficient permissions' });
-  }
-  ```
+TrustVault handles sensitive enterprise documents under a strict **Zero-Trust & Deny-by-Default** paradigm. We model threats against:
+1. **Malicious External Actors:** Unauthenticated network attackers probing APIs, fuzzing parameters, or attempting brute-force/timing attacks.
+2. **Authenticated Adversaries (Cross-Tenant / Cross-User):** Authenticated users (e.g., `Eve`) attempting horizontal or vertical privilege escalation, IDOR, parameter tampering, or denial of service.
+3. **Compromised Roles (Rogue Admins & Editors):** Users with elevated privileges attempting unauthorized data access, file destruction, or unauthorized permission delegation.
+4. **Insider / Database Attackers:** Attackers with direct database read/write access attempting to alter audit trails or bypass application-level controls.
+
+### Explicit Security Boundaries & Accepted Risks
+
+| Boundary | Covered by TrustVault? | Architectural Defense | Accepted Risk / Justification |
+| :--- | :---: | :--- | :--- |
+| **Cross-User Data Isolation** | **YES** | Enforced DAL via `loadDocumentFor` + single `visibleDocumentsWhere` predicate | None accepted. Zero-tolerance for authorization leakage. |
+| **Audit Ledger Tampering** | **YES** | HMAC-SHA256 hash chain with external secret, advisory locking, and PostgreSQL mutation-blocking trigger | DB-level updates detected. Physical drop of whole database cannot be prevented by application software. |
+| **Direct Storage Access** | **YES** | Local disk storage outside web root; UUID-named files without extensions; no static HTTP serving | Attacker with OS-level root/shell access can read local disk. Mitigated via Cloudflare Tunnel (zero open ingress ports). |
+| **Network & Injection Attacks** | **YES** | Parameterized Prisma queries, strict Zod schemas, simple query parser, RFC 5987 headers | None accepted. |
 
 ---
 
-### Threat 02: Revocation Lag ("Zombie Access")
-- **Attack Scenario**: Alice grants Bob access to an audit file. At 14:00, Alice revokes Bob's access. If Bob generated a signed download link or holds a 24-hour JWT with claims embedded, Bob can continue downloading until token expiry.
-- **Vulnerability Root Cause**: Decoupling authentication/authorization using stateless tokens without a real-time revocation check.
-- **TrustVault Mitigation**:
-  - Permissions are **never baked into JWT payloads**.
-  - All access decisions are evaluated **dynamically at the moment of request execution**.
-  - As soon as the `DELETE /api/documents/:id/permissions/:userId` query commits to the database, Bob's next request (even 1 millisecond later) fails with `403 Forbidden`.
+## 2. Threat Matrix (All Attack Vectors)
+
+### Category A: Authorization & Privilege Escalation (T-01 to T-06)
+
+#### T-01: Insecure Direct Object Reference (IDOR) on File Download
+* **Attacker Scenario:** An authenticated user (`Eve`) obtains or guesses a valid document UUID belonging to `Alice` and sends `GET /api/documents/:id/download`.
+* **Defense Mechanism:** Every download request must pass through `loadDocumentFor(user, docId, 'download', reqContext)` in `src/dal/documentDal.ts`. The query checks for document ownership or an active row in `DocumentPermission` where `expiresAt` is null or in the future.
+* **Information Leakage Prevention:** Returns **404 Not Found** (identical to a non-existent UUID) rather than 403, preventing Eve from confirming document existence.
+* **Audit Event:** Records `ACCESS_DENIED` with Eve's userId, IP, and timestamp.
+* **Automated Test:** `test_idor_download_blocked_with_404`
+
+#### T-02: IDOR on Document Metadata
+* **Attacker Scenario:** `Eve` requests `GET /api/documents/:id` for `Alice`'s document.
+* **Defense Mechanism:** Handled by `loadDocumentFor(user, docId, 'read', reqContext)`. If no active grant or ownership exists, throws `NotFoundError` (404).
+* **Automated Test:** `test_idor_metadata_blocked_with_404`
+
+#### T-03: Stale Permissions After Revocation (Revocation Lag)
+* **Attacker Scenario:** `Bob` is granted `READ` access to a document and downloads it. The owner revokes Bob's access. Bob attempts to immediately download the file again using his existing JWT token.
+* **Defense Mechanism:** JWTs carry identity only (`userId`), zero permission state. `loadDocumentFor()` queries the database on every single request. Once the owner executes `DELETE /api/documents/:id/permissions/:userId`, the subsequent request immediately finds no grant and returns 404.
+* **Automated Test:** `test_instant_revocation_blocks_subsequent_request`
+
+#### T-04: Expired Time-Bounded Access
+* **Attacker Scenario:** A grant was created with `expiresAt = yesterday`. `Bob` attempts to download the file.
+* **Defense Mechanism:** The SQL predicate in `visibleDocumentsWhere` and `loadDocumentFor` explicitly checks `(expiresAt IS NULL OR expiresAt > NOW())`. Expired grants are evaluated as non-existent and return 404.
+* **Automated Test:** `test_expired_grant_returns_404`
+
+#### T-05: Horizontal / Vertical Privilege Escalation (Read-to-Edit & Viewer-to-Owner)
+* **Attacker Scenario:** A user with a `READ` grant sends `PUT /api/documents/:id` to modify metadata or upload a new file. Alternatively, a `VIEWER` attempts `POST /api/documents` to upload files.
+* **Defense Mechanism:**
+  1. For `PUT`, `loadDocumentFor(user, id, 'edit', reqContext)` verifies that the grant level is `EDIT`. Because the user has visibility (active `READ` grant) but unauthorized action, it returns **403 Forbidden**.
+  2. For `POST /documents`, the route middleware verifies `req.user.role === 'OWNER' || req.user.role === 'ADMIN'`. `VIEWER` accounts receive **403 Forbidden**.
+* **Automated Test:** `test_reader_cannot_edit_document` & `test_viewer_cannot_upload`
+
+#### T-06: Permission Delegation & Re-Sharing Leak
+* **Attacker Scenario:** An editor (`Bob` with `EDIT` grant) attempts to grant permissions to `Eve` via `POST /api/documents/:id/permissions`.
+* **Defense Mechanism:** `loadDocumentFor(user, id, 'manage_permissions', reqContext)` asserts that `document.ownerId === user.id`. Editors and Admins cannot grant permissions on documents they do not own. Returns **403 Forbidden**.
+* **Automated Test:** `test_editor_cannot_grant_permissions`
 
 ---
 
-### Threat 03: Direct Storage Exposure
-- **Attack Scenario**: Attacker scans web root for `/uploads/salary_review_2026.pdf` or discovers standard storage directory paths.
-- **Vulnerability Root Cause**: Storing user uploads in a public folder served directly by static file servers (e.g. Nginx, Express `express.static`).
-- **TrustVault Mitigation**:
-  1. Uploads directory is isolated at `storage/uploads/` (outside any public web folder).
-  2. Files on disk are renamed to UUIDv4 strings (e.g. `d7a5e8c1-4b2a-4f81-bf99-882233aa4455`) with no file extensions.
-  3. Original filenames, mime types, and metadata are maintained strictly inside the encrypted/protected database.
-  4. Files can only be retrieved via `documentController.downloadDocument`, which enforces authentication, authorization, and audit logging before streaming bytes.
+### Category B: Information Leakage & Existence Oracles (T-07 to T-10)
+
+#### T-07: Search Query Information Leakage
+* **Attacker Scenario:** `Eve` sends `GET /api/documents/search?q=Confidential` or filters by date/owner to discover documents she has no right to see.
+* **Defense Mechanism:** The search query does not filter results in application memory. The database query strictly applies `visibleDocumentsWhere(user)` in the `WHERE` clause:
+  `WHERE isDeleted = false AND (ownerId = :me OR id IN (SELECT documentId FROM DocumentPermission WHERE userId = :me AND ...))`.
+* **Automated Test:** `test_search_hides_unauthorized_docs`
+
+#### T-08: Status Code Existence Oracle (404 vs 403)
+* **Attacker Scenario:** An attacker cycles through UUIDs comparing 404 (non-existent) vs 403 (exists but forbidden) to map valid internal document IDs.
+* **Defense Mechanism:**
+  - If the user has **no visibility** (neither owner nor active grantee), the system returns **404 Not Found**.
+  - If the user **has visibility** (e.g. `READ` grantee) but attempts an unauthorized action (e.g. `PUT`), it returns **403 Forbidden**.
+* **Automated Test:** `test_denied_access_returns_404_for_unknown_visibility`
+
+#### T-09: Admin Document Content Snooping
+* **Attacker Scenario:** An `ADMIN` attempts to download documents or read files directly via `GET /api/documents/:id/download`.
+* **Defense Mechanism:** Admins have administrative visibility (metadata, audit logs, system metrics) via dedicated `/api/admin/documents` endpoints, but `loadDocumentFor(user, id, 'download')` does not bypass permission checks for Admins. Without an explicit grant from the owner, the download returns **403 Forbidden**.
+* **Automated Test:** `test_admin_cannot_download_without_grant`
+
+#### T-10: Email Harvesting / User Directory Enumeration
+* **Attacker Scenario:** An attacker requests a list of all users or probes registration endpoints to harvest corporate email addresses.
+* **Defense Mechanism:**
+  - Removed `/api/auth/users`. Replaced with rate-limited exact-match search `GET /api/users/lookup?email=...`.
+  - Registration returns a uniform generic response regardless of whether the email is already registered, eliminating registration enumeration oracles.
+* **Automated Test:** `test_user_directory_enumeration_blocked`
 
 ---
 
-### Threat 04: Audit Log Tampering & Repudiation
-- **Attack Scenario**: A malicious actor or insider attempts to alter or purge records in the `AuditLog` table to conceal that they downloaded confidential documents.
-- **Vulnerability Root Cause**: Traditional mutable SQL database tables allow `UPDATE` or `DELETE` statements on log entries.
-- **TrustVault Mitigation**:
-  - **Cryptographic Hash Chain (Tamper-Evident Ledger)**: Each audit log entry contains:
-    - `previousHash`: The SHA-256 hash of the immediately preceding record.
-    - `hash`: `SHA256(id + timestamp + userId + action + documentId + details + previousHash)`.
-  - Any alteration, deletion, or insertion in the history breaks the cryptographic chain from that point forward.
-  - The Admin dashboard includes an **"Audit Integrity Verifier"** button that re-calculates all SHA-256 hashes across the chain and flags any tampering with record IDs.
+### Category C: Storage, Upload & Data Destruction (T-11 to T-14)
+
+#### T-11: Malicious Executable Disguised as Document
+* **Attacker Scenario:** An attacker uploads a Windows PE executable (`payload.exe`) renamed to `report.pdf`.
+* **Defense Mechanism:**
+  1. Extension whitelist check (`.pdf`, `.docx`, `.xlsx`, `.txt`, `.png`, `.jpg`).
+  2. Magic byte inspection using buffer analysis (e.g. `file-type`). PE headers (`MZ`) or script contents disguised with `.pdf` extension are rejected.
+  3. Temporary upload files created by Multer are deleted immediately in a `finally` block on rejection.
+* **Automated Test:** `test_disguised_executable_rejected`
+
+#### T-12: Direct Storage URL Access & Path Traversal
+* **Attacker Scenario:** An attacker attempts to browse directly to `/storage/uploads/file.pdf` or passes `../../etc/passwd` in the filename/id parameter.
+* **Defense Mechanism:**
+  1. Files are stored outside the web root in `storage/uploads/`.
+  2. No `express.static` middleware is bound to the storage folder.
+  3. Input parameters are strictly validated via Zod as UUIDs. Filenames are stripped using `path.basename()`.
+  4. Downloads are served with `Content-Type: application/octet-stream` and RFC 5987 encoded `Content-Disposition: attachment; filename*=UTF-8''...` to prevent browser execution of SVG/HTML files.
+* **Automated Test:** `test_path_traversal_and_direct_storage_blocked`
+
+#### T-13: File Destruction / Irreversible Overwrite by Editor
+* **Attacker Scenario:** An editor with `EDIT` permissions uploads a corrupted or blank file, destroying the owner's original document.
+* **Defense Mechanism:** File replacements do not overwrite disk blobs. The system inserts a record into `DocumentVersion`, preserving the historical blob UUID. `Document.storedFilename` points to the new version.
+* **Redaction Protection:** Version history endpoints (`/api/documents/:id/versions`) are restricted strictly to the **Owner**, ensuring a `READ` user cannot download older versions containing redacted data.
+* **Automated Test:** `test_editor_file_replacement_preserves_version_history`
+
+#### T-14: Orphaned File Blobs on Deletion
+* **Attacker Scenario:** Deleting a user or document leaves unreferenced files on disk, leaking storage or causing data drift.
+* **Defense Mechanism:** `User` has `onDelete: Restrict` on `Document.ownerId`. Document deletion is implemented as soft-delete (`isDeleted = true`, `deletedAt = NOW()`). File unlinking is managed by an explicit transactional cleanup routine.
+* **Automated Test:** `test_document_soft_delete_and_retention`
 
 ---
 
-### Threat 06: Malicious File Uploads & MIME Confusion
-- **Attack Scenario**: Attacker renames a reverse shell script or executable to `quarterly_report.pdf` and uploads it.
-- **TrustVault Mitigation**:
-  1. **Extension Whitelist**: Only `.pdf`, `.docx`, `.xlsx`, `.txt`, `.csv`, `.png`, `.jpg`, `.jpeg` allowed.
-  2. **Magic Bytes Validation**: Using buffer inspection (`file-type` header check) to confirm that the file signature actually matches the declared MIME type.
-  3. **Content-Disposition**: All file downloads send `Content-Disposition: attachment; filename="..."` and `X-Content-Type-Options: nosniff` to prevent browsers from executing inline scripts.
+### Category D: Cryptographic Audit Ledger & Integrity (T-15 to T-18)
+
+#### T-15: Invalid UUID Audit Crash / Existence Oracle
+* **Attacker Scenario:** An attacker sends `GET /api/documents/00000000-0000-0000-0000-000000000000/download`.
+* **Vulnerability Identified:** If `documentId` in `AuditLog` has a Foreign Key constraint, PostgreSQL throws a foreign key violation, either crashing with 500 (acting as an existence oracle) or dropping the audit record.
+* **Defense Mechanism:** `AuditLog.documentId` is stored as an unconstrained plain string/UUID. The probe is cleanly logged as `ACCESS_DENIED`.
+* **Automated Test:** `test_nonexistent_uuid_audit_logged_cleanly`
+
+#### T-16: Audit Concurrency Race Condition (Ledger Forking)
+* **Attacker Scenario:** An attacker fires 50 concurrent requests. Two concurrent requests read the same latest `previousHash`, calculate identical hashes, and fork the ledger.
+* **Defense Mechanism:** Audit writes are wrapped in a database transaction with `pg_advisory_xact_lock(AUDIT_LOCK_ID)`. Sequence generation, timestamp assignment, and hash computation are strictly serialized.
+* **Automated Test:** `test_concurrent_audit_writes_maintain_chain`
+
+#### T-17: Database Administrator / SQL Injection Audit Tampering
+* **Attacker Scenario:** An attacker with database access (or via SQL injection) attempts to update or delete past audit entries.
+* **Defense Mechanism:**
+  1. Application connects via `trustvault_app` PostgreSQL role.
+  2. `REVOKE UPDATE, DELETE, TRUNCATE ON "AuditLog" FROM trustvault_app;`
+  3. A PostgreSQL trigger `PREVENT_AUDIT_MUTATION` explicitly raises an exception on any `UPDATE` or `DELETE` attempt.
+  4. Every column (`id`, `sequenceNumber`, `timestamp`, `action`, `userId`, `userEmail`, `documentId`, `documentTitle`, `status`, `ipAddress`, `userAgent`, `details`, `previousHash`) is covered by an **HMAC-SHA256** using `AUDIT_HMAC_SECRET` stored outside the database.
+* **Automated Test:** `test_audit_chain_detects_row_modification`
+
+#### T-18: Audit Tail Truncation
+* **Attacker Scenario:** An attacker deletes the latest 5 rows of the audit log. Because all remaining rows are internally consistent, standard hash chain verification passes.
+* **Defense Mechanism:** The audit service periodically exports an external anchor `(sequenceNumber, headHash, timestamp)` to `storage/audit_anchor.json`. The verification endpoint (`GET /api/admin/audit-verify`) validates that the chain matches the external anchor.
+* **Automated Test:** `test_audit_chain_detects_tail_truncation`
 
 ---
 
-## 3. Deliberately Accepted Risks & Rationale
+### Category E: Infrastructure, Auth & Transport (T-19 to T-22)
 
-| Accepted Risk | Why it was Accepted | Architectural Rationale & Compensating Control |
-| :--- | :--- | :--- |
-| **In-Flight Stream Revocation** | When a large file download starts, revoking permission mid-download does not sever the active TCP connection. | Terminating in-flight OS-level TCP socket connections requires complex stateful proxy hooks. Mitigated by: streaming chunk-size checks, small document typical sizes, and instantaneous block on any subsequent request or range request. |
-| **Local Disk Storage vs. Object Storage** | We default to local filesystem with UUIDs rather than AWS S3 / Azure Blob. | Preserves zero-dependency local reproduction, zero cloud cost, and eliminates external network failure points during testing and evaluation. Fully abstracted behind `storageService` interface so S3 can be dropped in seamlessly. |
-| **Database Encryption at Rest** | SQLite/PostgreSQL relies on OS filesystem encryption rather than column-level envelope encryption for file metadata. | Column-level encryption adds key management complexity (KMS) not required for single-tenant evaluation. Compensated by hashing sensitive passwords with Argon2/bcrypt and storing file content encrypted or in private disk paths. |
+#### T-19: Demoted Admin / Revoked User Token Replay
+* **Attacker Scenario:** An admin is demoted or a user is deactivated. The user continues to make requests using their existing 8-hour JWT.
+* **Defense Mechanism:** `User` table contains `tokenVersion: Int`.
+  - On role demotion (`PATCH /api/admin/users/:id/role`), deactivation, or logout, `tokenVersion` is incremented.
+  - Auth middleware re-verifies `tokenVersion` and `isActive` against the database on every authenticated request. Old tokens are rejected immediately with 401.
+* **Automated Test:** `test_token_version_invalidation_on_demotion`
+
+#### T-20: Authentication Timing Attack on Login
+* **Attacker Scenario:** An attacker measures API response times on `POST /api/auth/login` to enumerate valid registered emails based on whether bcrypt execution occurred.
+* **Defense Mechanism:** If the email does not exist in the database, the server runs `bcrypt.compare(password, DUMMY_HASH)` (using cost factor 12) so the elapsed time is statistically indistinguishable from a valid email with a wrong password.
+* **Automated Test:** `test_login_timing_indistinguishable`
+
+#### T-21: Reverse Proxy IP Spoofing & Brute-Force Rate Limiting
+* **Attacker Scenario:** Behind Cloudflare Tunnel, an attacker sends requests with fake `X-Forwarded-For` headers to bypass rate limits or exhaust global limits for all users.
+* **Defense Mechanism:**
+  - Express is bound strictly to `127.0.0.1` with `app.set('trust proxy', 1)`.
+  - Client IP is extracted via trusted `req.headers['cf-connecting-ip'] || req.socket.remoteAddress`.
+  - Dual rate limiting: Global IP limiter (100 req/min) + Login limiter (5 attempts/15min) keyed on composite `clientIp + '_' + sanitizedEmail`.
+* **Automated Test:** `test_rate_limiter_dual_keying`
+
+#### T-22: Express Query Parameter Object Injection
+* **Attacker Scenario:** Attacker sends `GET /api/documents?owner[not]=x` or `?id[$gt]=...`. In default Express setups, `qs` parses nested keys as objects, passing unexpected filter operators into Prisma.
+* **Defense Mechanism:**
+  - Configured `app.set('query parser', 'simple')` to disable nested object parsing.
+  - Every query parameter, body, and route parameter is validated strictly using Zod schemas. Non-scalar or unexpected types throw 400 validation errors before database access.
+* **Automated Test:** `test_zod_rejects_object_filter_injection`
 
 ---
 
-## 4. Test Verification Checklist
+## 3. Structural Enforcement & Mutation Resistance (T-23)
 
-Every threat outlined above has a dedicated automated integration test in `tests/security.test.ts`. If an evaluator removes any authorization check in the codebase, the test suite will fail.
+#### T-23: Mutation Testing (Bypassing Authorization Checks)
+* **Evaluator / Judge Test:** The judge removes or comments out the authorization check in the code and re-runs test suites. If tests still pass due to duplicate/redundant checks or false assertions, the system fails evaluation.
+* **Defense Mechanism:**
+  - **Single Data-Access Gatekeeper:** All document reads and writes flow through `src/dal/documentDal.ts`.
+  - **ESLint Rule (`no-restricted-imports`):** Controllers are strictly forbidden from importing `@prisma/client`.
+  - If the authorization check in `loadDocumentFor()` is removed, every single document route security test fails immediately (RED).
+* **Automated Verification:** `scripts/mutation-test.ts` automatically modifies the check, verifies tests go red, and restores code.
