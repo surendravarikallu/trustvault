@@ -26,7 +26,7 @@
   - Implemented `loadDocumentFor(user, docId, action, reqContext)` as the sole path to retrieve document records and file paths.
   - Banned direct `@prisma/client` imports in controllers via an ESLint `no-restricted-imports` rule.
   - Removing the authorization check in `loadDocumentFor()` causes real route tests to fail immediately (RED), satisfying mutation testing.
-* **Commit:** `[Commit Hash Pending - Day 1 Foundation]`
+* **Commit:** [`8ef879e` - Architecture & Threat Specification](https://github.com/surendravarikallu/trustvault/commit/8ef879e)
 
 ---
 
