@@ -14,6 +14,7 @@
     "test": "jest --runInBand",
     "test:security": "jest tests/security.test.ts --runInBand",
     "test:mutation": "tsx scripts/mutation-test.ts",
+    "test:gatekeeper": "tsx scripts/verify-dal-invariants.ts",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
