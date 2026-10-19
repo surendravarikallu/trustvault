@@ -8,6 +8,7 @@ import { PermissionsModal } from './components/PermissionsModal';
 import { AuditLedgerView } from './components/AuditLedgerView';
 import { UserDirectoryView } from './components/UserDirectoryView';
 import { LoginView } from './components/LoginView';
+import { MfaModal } from './components/MfaModal';
 import { fetchDocuments, downloadDocument, deleteDocument, apiLogin } from './api';
 
 type Tab = 'documents' | 'audit' | 'users';
@@ -25,6 +26,7 @@ export const App: React.FC = () => {
   // Modals state
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [permissionsDoc, setPermissionsDoc] = useState<VaultDocument | null>(null);
+  const [isMfaOpen, setIsMfaOpen] = useState(false);
 
   // Toast notification state
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -66,9 +68,11 @@ export const App: React.FC = () => {
 
     try {
       const data = await apiLogin(email, passwords[email]);
-      handleLoginSuccess(data.token, data.user);
-      if (data.user.role !== 'ADMIN') {
-        setActiveTab('documents');
+      if (data.token && data.user) {
+        handleLoginSuccess(data.token, data.user);
+        if (data.user.role !== 'ADMIN') {
+          setActiveTab('documents');
+        }
       }
     } catch (err: any) {
       showToast('error', `Failed to switch persona: ${err.message}`);
@@ -122,7 +126,12 @@ export const App: React.FC = () => {
 
   return (
     <div>
-      <Navbar user={user} onLogout={handleLogout} onSwitchPersona={handleSwitchPersona} />
+      <Navbar
+        user={user}
+        onLogout={handleLogout}
+        onSwitchPersona={handleSwitchPersona}
+        onOpenMfa={() => setIsMfaOpen(true)}
+      />
 
       <main className="workspace-container">
         {/* Navigation Tabs */}
@@ -194,6 +203,16 @@ export const App: React.FC = () => {
         onClose={() => setPermissionsDoc(null)}
         token={token}
       />
+
+      {/* MFA Setup & Management Modal */}
+      {token && (
+        <MfaModal
+          isOpen={isMfaOpen}
+          onClose={() => setIsMfaOpen(false)}
+          token={token}
+          onMfaStatusChange={() => showToast('success', 'MFA status updated successfully.')}
+        />
+      )}
 
       {/* Toast Notification */}
       {toast && (

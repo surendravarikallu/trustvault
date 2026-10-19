@@ -13,7 +13,15 @@ function getAuthHeader(token: string | null): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-export async function apiLogin(email: string, password: string): Promise<{ token: string; user: User }> {
+export interface LoginResponse {
+  token?: string;
+  user?: User;
+  mfaRequired?: boolean;
+  mfaChallengeToken?: string;
+  message?: string;
+}
+
+export async function apiLogin(email: string, password: string): Promise<LoginResponse> {
   const res = await fetch('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -25,6 +33,66 @@ export async function apiLogin(email: string, password: string): Promise<{ token
     throw new Error(data.error || 'Login failed.');
   }
   return data;
+}
+
+export async function apiVerifyLoginMfa(mfaChallengeToken: string, code: string): Promise<{ token: string; user: User }> {
+  const res = await fetch('/api/auth/mfa/verify-login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mfaChallengeToken, code })
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || 'MFA verification failed.');
+  }
+  return data;
+}
+
+export async function apiSetupMfa(token: string): Promise<{ secret: string; qrCode: string; otpauthUrl: string }> {
+  const res = await fetch('/api/auth/mfa/setup', {
+    method: 'POST',
+    headers: getAuthHeader(token)
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || 'MFA setup failed.');
+  }
+  return data;
+}
+
+export async function apiVerifyMfaSetup(token: string, code: string): Promise<{ message: string; backupCodes: string[] }> {
+  const res = await fetch('/api/auth/mfa/verify-setup', {
+    method: 'POST',
+    headers: {
+      ...getAuthHeader(token),
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ code })
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || 'MFA confirmation failed.');
+  }
+  return data;
+}
+
+export async function apiDisableMfa(token: string, password: string, code: string): Promise<void> {
+  const res = await fetch('/api/auth/mfa/disable', {
+    method: 'POST',
+    headers: {
+      ...getAuthHeader(token),
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ password, code })
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || 'MFA disable failed.');
+  }
 }
 
 export async function apiRegister(email: string, password: string, name: string): Promise<{ token: string; user: User }> {

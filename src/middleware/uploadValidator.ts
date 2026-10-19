@@ -4,6 +4,7 @@ import fs from 'fs';
 import { Request, Response, NextFunction } from 'express';
 import { config } from '../config';
 import { validateDiskFile } from '../utils/fileSignature';
+import { ThreatScanner } from '../services/threatScanner';
 
 // Ensure temporary upload directory exists
 if (!fs.existsSync(config.tempDir)) {
@@ -65,6 +66,18 @@ export async function validateUploadedFile(req: Request, res: Response, next: Ne
 
     // Attach validated MIME type
     (req as any).detectedMime = result.detectedMime;
+
+    // 3. Deep heuristic threat & macro exploit inspection
+    const threatScan = await ThreatScanner.scanFile(file.path, file.originalname);
+    if (!threatScan.isSafe) {
+      await safeUnlink(file.path);
+      res.status(400).json({
+        error: `Security threat scan rejected: ${threatScan.details || 'Dangerous payload detected.'}`,
+        threatType: threatScan.threatType
+      });
+      return;
+    }
+
     next();
   } catch (error: any) {
     await safeUnlink(file.path);

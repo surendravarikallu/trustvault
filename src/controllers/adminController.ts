@@ -7,6 +7,7 @@ import { listDocuments } from '../dal/documentDal';
 import { getAuditLogs, verifyAuditChain, logAuditEvent } from '../dal/auditDal';
 import { setUserRole, setUserActive, listAllUsers, getUserById } from '../dal/userDal';
 import { BackupService } from '../services/backupService';
+import { RetentionService } from '../services/retentionService';
 
 const RoleChangeSchema = z.object({
   role: z.nativeEnum(Role)
@@ -187,6 +188,36 @@ export async function verifyBackupHandler(req: AuthenticatedRequest, res: Respon
   try {
     const result = await BackupService.verifyBackupArchive(target);
     res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
+export async function runCryptoShredHandler(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const admin = req.user!;
+  const { olderThanDays, documentId } = req.body;
+
+  try {
+    if (documentId) {
+      const report = await RetentionService.shredDocumentImmediately(
+        documentId,
+        admin.email,
+        getRequestContext(req)
+      );
+      if (!report) {
+        res.status(404).json({ error: 'Document not found or already purged.' });
+        return;
+      }
+      res.json({ message: 'NIST SP 800-88 cryptographic shredding completed.', report });
+      return;
+    }
+
+    const days = typeof olderThanDays === 'number' ? olderThanDays : 0;
+    const reports = await RetentionService.runRetentionCycle(days, admin.email);
+    res.json({
+      message: `Retention purge executed. Crypto-shredded ${reports.length} documents.`,
+      reports
+    });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

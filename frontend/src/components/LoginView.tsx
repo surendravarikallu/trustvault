@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Shield, ArrowRight, Lock, AlertCircle } from 'lucide-react';
-import { apiLogin } from '../api';
+import { Shield, ArrowRight, Lock, AlertCircle, KeyRound } from 'lucide-react';
+import { apiLogin, apiVerifyLoginMfa } from '../api';
 import type { User } from '../types';
 
 interface LoginViewProps {
@@ -13,6 +13,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // 2-Step MFA Challenge State
+  const [mfaChallengeToken, setMfaChallengeToken] = useState<string | null>(null);
+  const [totpCode, setTotpCode] = useState('');
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -20,9 +24,29 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
 
     try {
       const data = await apiLogin(email, password);
-      onLoginSuccess(data.token, data.user);
+      if (data.mfaRequired && data.mfaChallengeToken) {
+        setMfaChallengeToken(data.mfaChallengeToken);
+      } else if (data.token && data.user) {
+        onLoginSuccess(data.token, data.user);
+      }
     } catch (err: any) {
       setError(err.message || 'Authentication failed.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleMfaSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!mfaChallengeToken) return;
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const data = await apiVerifyLoginMfa(mfaChallengeToken, totpCode);
+      onLoginSuccess(data.token, data.user);
+    } catch (err: any) {
+      setError(err.message || 'Invalid TOTP or recovery backup code.');
     } finally {
       setIsLoading(false);
     }
@@ -33,9 +57,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
     setPassword(pPass);
     setIsLoading(true);
     setError(null);
+    setMfaChallengeToken(null);
     try {
       const data = await apiLogin(pEmail, pPass);
-      onLoginSuccess(data.token, data.user);
+      if (data.mfaRequired && data.mfaChallengeToken) {
+        setMfaChallengeToken(data.mfaChallengeToken);
+      } else if (data.token && data.user) {
+        onLoginSuccess(data.token, data.user);
+      }
     } catch (err: any) {
       setError(err.message || 'Authentication failed.');
     } finally {
@@ -165,43 +194,105 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
           </div>
         )}
 
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>Corporate Email</label>
-            <div style={{ position: 'relative' }}>
+        {mfaChallengeToken ? (
+          <form onSubmit={handleMfaSubmit}>
+            <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '38px',
+                  height: '38px',
+                  borderRadius: '50%',
+                  background: 'var(--color-primary-subtle)',
+                  color: '#60a5fa',
+                  marginBottom: '8px'
+                }}
+              >
+                <KeyRound size={20} />
+              </div>
+              <h3 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)' }}>Two-Factor Challenge</h3>
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                Enter the 6-digit TOTP code from your authenticator app, or an emergency single-use backup recovery code.
+              </p>
+            </div>
+
+            <div className="form-group">
+              <label>Verification / Backup Code</label>
               <input
-                type="email"
+                type="text"
                 required
-                placeholder="name@trustvault.local"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                autoComplete="username"
+                autoFocus
+                placeholder="000000 or BACKUP-CODE"
+                value={totpCode}
+                onChange={(e) => setTotpCode(e.target.value.trim())}
+                style={{ textAlign: 'center', letterSpacing: '0.15em', fontSize: '16px', fontFamily: 'var(--font-mono)' }}
               />
             </div>
-          </div>
 
-          <div className="form-group">
-            <label>Master Password</label>
-            <input
-              type="password"
-              required
-              placeholder="••••••••••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-            />
-          </div>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={isLoading || totpCode.length < 6}
+              style={{ width: '100%', marginTop: '8px', padding: '8px' }}
+            >
+              {isLoading ? 'Verifying Code...' : 'Confirm Identity & Enter Vault'}
+              <ArrowRight size={14} />
+            </button>
 
-          <button
-            type="submit"
-            className="btn btn-primary"
-            disabled={isLoading}
-            style={{ width: '100%', marginTop: '8px', padding: '8px' }}
-          >
-            {isLoading ? 'Verifying Credentials...' : 'Authenticate & Enter Vault'}
-            <ArrowRight size={14} />
-          </button>
-        </form>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                setMfaChallengeToken(null);
+                setTotpCode('');
+                setError(null);
+              }}
+              style={{ width: '100%', marginTop: '8px', padding: '8px' }}
+            >
+              Back to Password Login
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label>Corporate Email</label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="email"
+                  required
+                  placeholder="name@trustvault.local"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="username"
+                />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label>Master Password</label>
+              <input
+                type="password"
+                required
+                placeholder="••••••••••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={isLoading}
+              style={{ width: '100%', marginTop: '8px', padding: '8px' }}
+            >
+              {isLoading ? 'Verifying Credentials...' : 'Authenticate & Enter Vault'}
+              <ArrowRight size={14} />
+            </button>
+          </form>
+        )}
       </div>
 
       {/* Evaluation Principals Fast Selection */}

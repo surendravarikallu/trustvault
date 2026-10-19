@@ -29,12 +29,13 @@ The system is seeded with dedicated accounts for each evaluation persona:
 - **Cryptographic Audit Ledger:** HMAC-SHA256 hash-chained ledger storing unconstrained document references (preventing existence oracles and delete-time history mutation). Writes are serialized with PostgreSQL advisory transaction locks (`pg_advisory_xact_lock`) and verified against external disk anchors (`storage/audit_anchor.json`).
 - **Instant Revocation:** `tokenVersion` on user records immediately invalidates active JWTs upon role demotion, deactivation, or logout on every request.
 - **Fail-Closed Existence Protection (404 vs 403):** Returning 404 for unshared documents conceals document existence from unauthorized probes.
-- **Upload Hardening:** Binary magic byte verification (`fileSignature.ts`), extension whitelisting, RFC 5987 attachment headers, disk storage outside web root, and automatic temporary file unlinking.
+- **Upload Hardening & Heuristic Threat Scanner:** Binary magic byte verification (`fileSignature.ts`), extension whitelisting, RFC 5987 attachment headers, disk storage outside web root, and deep payload inspection (`ThreatScanner.ts`) detecting weaponized PDF actions (`/Launch`, `/JavaScript`, `/EmbeddedFiles`), Office VBA macros (`vbaProject.bin`), and obfuscated shell scripts.
 - **Envelope Encryption at Rest:** Zero plain-text persistence. Files written to disk carry a unique 12-byte IV, AES-256-GCM ciphertext, 16-byte authentication tag, and magic header `TV_AES256_GCM_v1:`. Downloads stream through a transparent decrypted read stream.
+- **NIST SP 800-88 Cryptographic Shredding:** Multi-pass physical disk sanitization (pseudorandom entropy overwrite + zeroing + `fdatasync`) before unlinking purged documents, coupled with cascade DB deletion and HMAC-SHA256 audit logging.
 - **Cryptographic Backups & Disaster Recovery:** One-click verified atomic snapshots capturing database dumps, storage blobs, and external audit anchors. Includes HMAC-SHA256 signed manifests, integrity verification, and rolling 7-backup retention.
 - **Database Composite Indexing:** Optimized composite query paths across `Document` (`[isDeleted, ownerId]`, `[isDeleted, category]`, `[isDeleted, createdAt]`, `[fileHash]`), `DocumentVersion`, `DocumentPermission`, and `AuditLog`.
 - **Deep Health Telemetry:** Live database round-trip latency (`SELECT 1`), process memory metrics (RSS, heapUsed), and uptime via `/api/health`.
-- **Multi-Factor Authentication (RFC 6238 TOTP):** Native zero-dependency RFC 6238 TOTP engine with AES-256-GCM encrypted secrets at rest, single-use SHA-256 backup recovery codes, 30-second replay window defense (`mfaLastTimeStep`), and 2-stage login challenge token handshake.
+- **Multi-Factor Authentication (RFC 6238 TOTP):** Native zero-dependency RFC 6238 TOTP engine with AES-256-GCM encrypted secrets at rest, single-use SHA-256 backup recovery codes, 30-second replay window defense (`mfaLastTimeStep`), 2-stage login challenge token handshake, and interactive Web UI with QR code authenticator enrollment.
 
 ---
 
@@ -65,7 +66,7 @@ npm run build:frontend
 
 ### Run Tests & Verification Suites
 ```bash
-# Run full automated test suite (7 suites, 45 security tests)
+# Run full automated test suite (8 suites, 51 security tests)
 npm test
 
 # Run mutation verification tool (proves tests go RED if check is removed)
@@ -97,6 +98,7 @@ npm run tunnel
 | :--- | :--- | :--- |
 | **`tests/security.test.ts`** | Core Access Control & Router Matrix | 16 tests: IDOR 404 blocking, instant revocation, expired grants, reader edit block, editor grant block, admin content block, viewer upload block, path traversal, disguised executables, audit existence oracle, search leakage, HMAC chain verification, token demotion, router coverage. |
 | **`tests/mfa-totp.test.ts`** | Multi-Factor Authentication & Replay | 8 tests: Base32 secret generation, QR code DataURI, invalid code rejection, confirmation with 8 backup codes, login challenge token isolation, 30s replay defense (CWE-287), single-use backup code consumption, dual-verification disable. |
+| **`tests/threat-retention.test.ts`** | Heuristic Threat Scanner & NIST Shredder | 6 tests: Weaponized PDF `/Launch` command rejection, PDF `/JavaScript` stream rejection, OOXML `vbaProject.bin` macro rejection, obfuscated PowerShell script rejection, NIST SP 800-88 cryptographic disk overwriting, admin retention RBAC and HMAC audit logging. |
 | **`tests/backup-disaster-recovery.test.ts`** | Backups, Storage Encryption & Health | 6 tests: Deep health check with DB latency & memory metrics, AES-256-GCM envelope encryption at rest, legacy file backward compatibility, atomic snapshot creation with HMAC-signed manifest, manifest tamper detection, admin backup API routes with RBAC. |
 | **`tests/identity-revocation.test.ts`** | Session Invalidation & Timing Attacks | 4 tests: Instant user deactivation session severance (HTTP 401), dummy bcrypt hash timing parity, owner-only delegation, exact email lookup enumeration defense. |
 | **`tests/upload-hardening.test.ts`** | Upload Validation & Storage Bounds | 5 tests: PE/MZ executable rejection, extension whitelist, MIME/extension discrepancy, version history preservation, search query memory bounds (`take: 100`). |
@@ -109,6 +111,6 @@ npm run tunnel
 
 ## 5. Core Documentation
 
-- **[`THREATS.md`](./THREATS.md):** Catalog of 37 modeled threat vectors (T-01 to T-37) spanning Categories A through G, Section 3, and Section 4.
-- **[`PROMPTS.md`](./PROMPTS.md):** Human engineering oversight log with 12 entries documenting developer interventions, AI flaw corrections, and Git commit references.
+- **[`THREATS.md`](./THREATS.md):** Catalog of 39 modeled threat vectors (T-01 to T-39) spanning Categories A through G, Section 3, Section 4, and Section 5.
+- **[`PROMPTS.md`](./PROMPTS.md):** Human engineering oversight log with 13 entries documenting developer interventions, AI flaw corrections, and Git commit references.
 - **[`CONTEXT_HANDOVER.md`](./CONTEXT_HANDOVER.md):** Complete architectural analysis, 19 cataloged vulnerability fixes (L-01 to L-19), database schemas, and engineering invariants.

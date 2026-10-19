@@ -6,9 +6,10 @@ interface NavbarProps {
   user: User;
   onLogout: () => void;
   onSwitchPersona: (email: string) => void;
+  onOpenMfa: () => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onSwitchPersona }) => {
+export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onSwitchPersona, onOpenMfa }) => {
   return (
     <>
       {/* Enterprise System Context Header */}
@@ -87,6 +88,16 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onSwitchPersona 
             <span style={{ fontWeight: 500 }}>{user.name}</span>
             <span className={`role-pill role-${user.role}`}>{user.role}</span>
           </div>
+
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={onOpenMfa}
+            title="Configure Two-Factor Authentication (TOTP)"
+            style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+          >
+            <KeyRound size={13} color="var(--color-primary)" />
+            <span>2FA</span>
+          </button>
 
           <button
             className="btn btn-secondary btn-sm"

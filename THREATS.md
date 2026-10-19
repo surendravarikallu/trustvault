@@ -314,3 +314,23 @@ TrustVault handles sensitive enterprise documents under a strict **Zero-Trust & 
 * **Defense Mechanism:**
   - **Deep Health Check Endpoint:** `GET /api/health` executes a live database round-trip probe (`SELECT 1`), measures latency in milliseconds, reports RSS and heap memory consumption, and returns HTTP 503 degraded status if the database becomes unreachable.
 * **Automated Test:** `DR-01` in `tests/backup-disaster-recovery.test.ts`.
+
+#### T-38: Weaponized Macro, PDF Exploit Streams & Script Infiltration (CWE-434 / CWE-94)
+* **Attacker Scenario:** An attacker uploads a valid PDF or Word document containing weaponized `/Launch` commands, embedded `/JavaScript` execution streams, or VBA macro binaries (`vbaProject.bin`) to compromise client viewers.
+* **Defense Mechanism:**
+  - **Deep Heuristic Threat Scanner:** [`ThreatScanner`](file:///c:/Users/Admin/Documents/trustvault/src/services/threatScanner.ts) deeply inspects file byte buffers prior to persistence:
+    - Scans PDF files for dangerous action dictionaries (`/Launch`, `/JavaScript`, `/JS`, `/EmbeddedFiles` + `/OpenAction`).
+    - Scans OOXML archives (`.docx`, `.xlsx`, `.pptx`) for embedded Visual Basic for Applications macro projects (`vbaProject.bin`) and external OLE object template injections.
+    - Scans text files for obfuscated PowerShell commands (`powershell -encodedcommand`) and unauthorized shell shebangs (`#!/bin/sh`).
+    - Malicious files are rejected with HTTP 400 and immediately unlinked from temporary storage.
+* **Automated Test:** `TS-01` through `TS-04` in `tests/threat-retention.test.ts`.
+
+#### T-39: Forensic Remanence & Incomplete Cryptographic Sanitization (CWE-226 / NIST SP 800-88)
+* **Attacker Scenario:** An attacker recovers magnetic/SSD residual bytes from unallocated physical storage blocks after a document is deleted.
+* **Defense Mechanism:**
+  - **NIST SP 800-88 Cryptographic Sanitization:** [`RetentionService.cryptoWipeFile()`](file:///c:/Users/Admin/Documents/trustvault/src/services/retentionService.ts) executes a 2-pass sanitization before file unlinking:
+    - Pass 1: Physical disk overwrite with high-entropy cryptographic pseudorandom bytes (`crypto.randomBytes`).
+    - Pass 2: Cryptographic zeroing buffer overwrite.
+    - Storage flush (`fs.fdatasyncSync`) forces immediate sector commit to disk before `fs.unlinkSync()`.
+  - Cascades record deletions in PostgreSQL and logs `DOCUMENT_CRYPTO_SHREDDED` to the cryptographic audit ledger.
+* **Automated Test:** `CS-01` and `CS-02` in `tests/threat-retention.test.ts`.

@@ -10,7 +10,8 @@ import {
   getUsers,
   createBackupHandler,
   listBackupsHandler,
-  verifyBackupHandler
+  verifyBackupHandler,
+  runCryptoShredHandler
 } from '../controllers/adminController';
 
 export const adminRouter = Router();
@@ -31,4 +32,7 @@ adminRouter.get('/users', getUsers);
 adminRouter.post('/backups', createBackupHandler);
 adminRouter.get('/backups', listBackupsHandler);
 adminRouter.post('/backups/verify', verifyBackupHandler);
+
+// Retention Schedule & Crypto-Shredding (NIST SP 800-88)
+adminRouter.post('/retention/crypto-shred', runCryptoShredHandler);
 
