@@ -1,0 +1,209 @@
+import React, { useState, useEffect } from 'react';
+import { FileText, Shield, Users as UsersIcon, CheckCircle2, AlertCircle } from 'lucide-react';
+import type { User, VaultDocument } from './types';
+import { Navbar } from './components/Navbar';
+import { DocumentList } from './components/DocumentList';
+import { UploadModal } from './components/UploadModal';
+import { PermissionsModal } from './components/PermissionsModal';
+import { AuditLedgerView } from './components/AuditLedgerView';
+import { UserDirectoryView } from './components/UserDirectoryView';
+import { LoginView } from './components/LoginView';
+import { fetchDocuments, downloadDocument, deleteDocument, apiLogin } from './api';
+
+type Tab = 'documents' | 'audit' | 'users';
+
+export const App: React.FC = () => {
+  const [token, setToken] = useState<string | null>(localStorage.getItem('tv_token'));
+  const [user, setUser] = useState<User | null>(
+    localStorage.getItem('tv_user') ? JSON.parse(localStorage.getItem('tv_user')!) : null
+  );
+
+  const [activeTab, setActiveTab] = useState<Tab>('documents');
+  const [documents, setDocuments] = useState<VaultDocument[]>([]);
+  const [isLoadingDocs, setIsLoadingDocs] = useState(false);
+
+  // Modals state
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [permissionsDoc, setPermissionsDoc] = useState<VaultDocument | null>(null);
+
+  // Toast notification state
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  useEffect(() => {
+    if (token && user) {
+      loadDocuments();
+    }
+  }, [token, user]);
+
+  const showToast = (type: 'success' | 'error', message: string) => {
+    setToast({ type, message });
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  const handleLoginSuccess = (newToken: string, newUser: User) => {
+    setToken(newToken);
+    setUser(newUser);
+    localStorage.setItem('tv_token', newToken);
+    localStorage.setItem('tv_user', JSON.stringify(newUser));
+    showToast('success', `Signed in as ${newUser.name} (${newUser.role})`);
+  };
+
+  const handleLogout = () => {
+    setToken(null);
+    setUser(null);
+    localStorage.removeItem('tv_token');
+    localStorage.removeItem('tv_user');
+    showToast('success', 'Logged out. Active session invalidated.');
+  };
+
+  const handleSwitchPersona = async (email: string) => {
+    const passwords: Record<string, string> = {
+      'admin@trustvault.local': 'Admin@TrustVault2026!',
+      'owner@trustvault.local': 'Owner@TrustVault2026!',
+      'viewer@trustvault.local': 'Viewer@TrustVault2026!',
+      'eve@trustvault.local': 'Eve@TrustVault2026!'
+    };
+
+    try {
+      const data = await apiLogin(email, passwords[email]);
+      handleLoginSuccess(data.token, data.user);
+    } catch (err: any) {
+      showToast('error', `Failed to switch persona: ${err.message}`);
+    }
+  };
+
+  const loadDocuments = async (filters?: any) => {
+    if (!token) return;
+    setIsLoadingDocs(true);
+    try {
+      const data = await fetchDocuments(token, filters);
+      setDocuments(data);
+    } catch (err: any) {
+      showToast('error', err.message);
+      if (err.message.includes('revoked') || err.message.includes('inactive')) {
+        handleLogout();
+      }
+    } finally {
+      setIsLoadingDocs(false);
+    }
+  };
+
+  const handleDownload = async (doc: VaultDocument) => {
+    if (!token) return;
+    showToast('success', `Streaming ${doc.originalFilename}...`);
+    try {
+      await downloadDocument(doc.id, doc.originalFilename, token);
+      showToast('success', `Downloaded ${doc.originalFilename} safely.`);
+    } catch (err: any) {
+      showToast('error', `Download Refused: ${err.message}`);
+    }
+  };
+
+  const handleDelete = async (docId: string) => {
+    if (!token) return;
+    if (!window.confirm('Are you sure you want to soft-delete this document?')) return;
+    try {
+      await deleteDocument(docId, token);
+      showToast('success', 'Document soft-deleted.');
+      await loadDocuments();
+    } catch (err: any) {
+      showToast('error', err.message);
+    }
+  };
+
+  if (!token || !user) {
+    return <LoginView onLoginSuccess={handleLoginSuccess} />;
+  }
+
+  const isAdmin = user.role === 'ADMIN';
+
+  return (
+    <div>
+      <Navbar user={user} onLogout={handleLogout} onSwitchPersona={handleSwitchPersona} />
+
+      <main className="container">
+        {/* Navigation Tabs */}
+        <div className="tabs-nav">
+          <button
+            className={`tab-btn ${activeTab === 'documents' ? 'active' : ''}`}
+            onClick={() => setActiveTab('documents')}
+          >
+            <FileText size={16} />
+            <span>Vault Documents</span>
+          </button>
+
+          {isAdmin && (
+            <>
+              <button
+                className={`tab-btn ${activeTab === 'audit' ? 'active' : ''}`}
+                onClick={() => setActiveTab('audit')}
+              >
+                <Shield size={16} />
+                <span>HMAC Audit Ledger</span>
+              </button>
+
+              <button
+                className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`}
+                onClick={() => setActiveTab('users')}
+              >
+                <UsersIcon size={16} />
+                <span>Enterprise Directory</span>
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* Tab Views */}
+        {activeTab === 'documents' && (
+          <DocumentList
+            documents={documents}
+            currentUser={user}
+            onDownload={handleDownload}
+            onOpenUpload={() => setIsUploadOpen(true)}
+            onOpenPermissions={(doc) => setPermissionsDoc(doc)}
+            onDeleteDocument={handleDelete}
+            onSearch={(filters) => loadDocuments(filters)}
+            isLoading={isLoadingDocs}
+          />
+        )}
+
+        {activeTab === 'audit' && <AuditLedgerView token={token} />}
+
+        {activeTab === 'users' && <UserDirectoryView token={token} currentUser={user} />}
+      </main>
+
+      {/* Upload Modal */}
+      <UploadModal
+        isOpen={isUploadOpen}
+        onClose={() => setIsUploadOpen(false)}
+        onUploadSuccess={() => {
+          showToast('success', 'Document uploaded and hashed into vault.');
+          loadDocuments();
+        }}
+        token={token}
+      />
+
+      {/* Permissions Modal */}
+      <PermissionsModal
+        document={permissionsDoc}
+        isOpen={!!permissionsDoc}
+        onClose={() => setPermissionsDoc(null)}
+        token={token}
+      />
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className="toast">
+          {toast.type === 'success' ? (
+            <CheckCircle2 size={18} color="var(--accent-emerald)" />
+          ) : (
+            <AlertCircle size={18} color="var(--accent-rose)" />
+          )}
+          <span style={{ fontSize: '0.85rem' }}>{toast.message}</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default App;

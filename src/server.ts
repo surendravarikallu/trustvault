@@ -1,4 +1,6 @@
 import express, { Request, Response, NextFunction } from 'express';
+import path from 'path';
+import fs from 'fs';
 import helmet from 'helmet';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
@@ -47,12 +49,24 @@ app.use('/api/auth', authRouter);
 app.use('/api/documents', documentRouter);
 app.use('/api/admin', adminRouter);
 
-// 8. 404 Catch-all handler
+// 8. Serve built frontend SPA if frontend/dist exists
+const frontendDist = path.resolve(__dirname, '../frontend/dist');
+if (fs.existsSync(frontendDist)) {
+  app.use(express.static(frontendDist));
+  app.get('*', (req: Request, res: Response, next: NextFunction) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/storage') || path.extname(req.path)) {
+      return next();
+    }
+    res.sendFile(path.join(frontendDist, 'index.html'));
+  });
+}
+
+// 9. 404 Catch-all handler for API routes
 app.use((_req: Request, res: Response) => {
   res.status(404).json({ error: 'Endpoint not found.' });
 });
 
-// 9. Global Error handling middleware
+// 10. Global Error handling middleware
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   console.error('Unhandled server exception:', err);
   const statusCode = err.statusCode || 500;

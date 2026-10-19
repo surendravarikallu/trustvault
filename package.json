@@ -5,8 +5,11 @@
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/server.js",
+    "build:frontend": "npm --prefix frontend run build",
+    "build:all": "npm run build && npm --prefix frontend run build",
+    "start": "node dist/src/server.js",
     "dev": "tsx watch src/server.ts",
+    "dev:frontend": "npm --prefix frontend run dev",
     "lint": "eslint \"src/**/*.ts\"",
     "test": "jest --runInBand",
     "test:security": "jest tests/security.test.ts --runInBand",
