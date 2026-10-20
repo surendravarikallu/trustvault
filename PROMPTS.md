@@ -460,6 +460,29 @@
   - Synchronized all test and threat counts across `README.md`, `THREATS.md`, and `PROMPTS.md`.
 * **Commit:** [`6512b8c` - Threat Matrix Completion (T-45 to T-47) & Traceability Audit](https://github.com/surendravarikallu/trustvault/commit/6512b8c)
 
+---
+
+### Entry 21: Role-Tailored Enterprise Dashboards, Collaborative Versioning & Access Badging
+* **Date:** 2026-10-20
+* **Topic:** Persona-Specific Dashboard Aesthetics, Metric KPI Grids, Scope Sub-Filters, and Revision Controls
+* **What I Asked:**  
+  "i think the dashboards other than admin are incorrect. give me an artifact file to simulate all users things, like uploding documet, sharing file as read and ediotr, and loggin back to other user, and able tosee the shared file to the user and accessing it."
+* **What Was Wrong (Developer Intervention):**  
+  1. **Dashboard Uniformity Flaw:** Non-admin roles (Owner and Viewer) previously had bare-bones document lists without executive KPI cards, clear clearance badges, or scope sub-filters ("My Uploads" vs "Shared With Me" vs "Can Edit").
+  2. **Editor Action Traps:** When a document was shared with `EDIT` permissions, the table badge erroneously displayed `AUTHORIZED READ`, and the UI lacked a mechanism to upload new versions or revisions, preventing editors from exercising their authorized privileges.
+  3. **Owner Version History Blindspot:** Document owners could not inspect historical document revisions or SHA-256 digests in the UI even though the backend supported version querying.
+* **What I Did Instead:**  
+  - **Automated Collaboration Simulation Engine (`scripts/simulate-collaboration-flow.ts`):** Built a 10-step end-to-end multi-user execution script demonstrating document upload by Alice (Owner), granting `READ` and `EDIT` to Bob (Viewer), logging in as Bob to verify visibility, streaming decrypted previews, blocking unauthorized edits and re-sharing attempts, executing authorized version replacement, verifying Eve's 404 fail-closed barrier, and auditing all events in the HMAC ledger.
+  - **Role-Tailored KPI Metrics & Sub-Filters (`frontend/src/components/DocumentList.tsx`):**
+    - **Owner Dashboard:** Configured 4 dedicated KPI cards (Vault Documents Owned, Active Shared Collaborations, Total Encrypted Storage, Clearance & Authority) and View Scope tabs (`All Documents`, `My Uploads`, `Shared With Me`).
+    - **Viewer Dashboard:** Configured 4 dedicated KPI cards (Accessible Documents, Read-Only Clearance, Collaborative Edit Rights, Single-Use Transfers) and View Scope tabs (`All Accessible`, `Read-Only`, `Can Edit`).
+    - **Admin Dashboard:** Configured 4 dedicated KPI cards (Total Managed Documents, Total Encrypted Volume, Cryptographic Ledger Link, Administrative Boundary).
+  - **Accurate Edit Badging & Revision Modal (`RevisionModal.tsx` & `VersionHistoryModal.tsx`):**
+    - Corrected status badge to display `AUTHORIZED EDIT` with an amber edit badge for collaborator editors.
+    - Added interactive `Revision` button allowing authorized editors and owners to upload replacement file versions with automated version incrementing.
+    - Added `History` modal for document owners to inspect historical version chains and copy SHA-256 digests.
+* **Commit:** [`2812a4e` - Role-Tailored Dashboard KPI Metrics, Sub-Filters, Revision Modal & History Tracking](https://github.com/surendravarikallu/trustvault/commit/2812a4e)
+
 
 
 
