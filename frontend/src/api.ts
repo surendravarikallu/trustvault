@@ -237,6 +237,49 @@ export async function deleteDocument(id: string, token: string): Promise<void> {
   }
 }
 
+export async function replaceDocument(id: string, file: File, token: string): Promise<VaultDocument> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(`/api/documents/${id}`, {
+    method: 'PUT',
+    headers: getAuthHeader(token),
+    body: formData
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || 'Failed to replace document version.');
+  }
+  return data.document;
+}
+
+export interface DocumentVersionInfo {
+  id: string;
+  versionNumber: number;
+  originalFilename: string;
+  fileSize: number;
+  mimeType: string;
+  fileHash: string;
+  createdAt: string;
+  createdBy?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+}
+
+export async function fetchDocumentVersions(id: string, token: string): Promise<DocumentVersionInfo[]> {
+  const res = await fetch(`/api/documents/${id}/versions`, {
+    headers: getAuthHeader(token)
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || 'Failed to fetch version history.');
+  }
+  return data.versions || [];
+}
+
 export async function fetchDocumentPermissions(docId: string, token: string): Promise<DocumentPermission[]> {
   const res = await fetch(`/api/documents/${docId}/permissions`, {
     headers: getAuthHeader(token)

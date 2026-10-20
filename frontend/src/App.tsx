@@ -10,6 +10,8 @@ import { UserDirectoryView } from './components/UserDirectoryView';
 import { LoginView } from './components/LoginView';
 import { MfaModal } from './components/MfaModal';
 import { DocumentPreviewModal } from './components/DocumentPreviewModal';
+import { RevisionModal } from './components/RevisionModal';
+import { VersionHistoryModal } from './components/VersionHistoryModal';
 import { fetchDocuments, downloadDocument, fetchDocumentBlobUrl, deleteDocument, apiLogin } from './api';
 
 type Tab = 'documents' | 'audit' | 'users';
@@ -27,6 +29,8 @@ export const App: React.FC = () => {
   // Modals state
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [permissionsDoc, setPermissionsDoc] = useState<VaultDocument | null>(null);
+  const [revisionDoc, setRevisionDoc] = useState<VaultDocument | null>(null);
+  const [historyDoc, setHistoryDoc] = useState<VaultDocument | null>(null);
   const [isMfaOpen, setIsMfaOpen] = useState(false);
   const [previewState, setPreviewState] = useState<{
     doc: VaultDocument;
@@ -299,6 +303,8 @@ export const App: React.FC = () => {
             onPreview={handlePreview}
             onOpenUpload={() => setIsUploadOpen(true)}
             onOpenPermissions={(doc) => setPermissionsDoc(doc)}
+            onOpenRevision={(doc) => setRevisionDoc(doc)}
+            onOpenHistory={(doc) => setHistoryDoc(doc)}
             onDeleteDocument={handleDelete}
             onSearch={(filters) => loadDocuments(filters)}
             isLoading={isLoadingDocs}
@@ -318,6 +324,26 @@ export const App: React.FC = () => {
           showToast('success', 'Document uploaded and hashed into vault.');
           loadDocuments();
         }}
+        token={token}
+      />
+
+      {/* Revision Modal (New Version Upload) */}
+      <RevisionModal
+        isOpen={!!revisionDoc}
+        document={revisionDoc}
+        onClose={() => setRevisionDoc(null)}
+        token={token}
+        onSuccess={() => {
+          showToast('success', 'New version revision committed and hashed into vault.');
+          loadDocuments();
+        }}
+      />
+
+      {/* Version History Modal */}
+      <VersionHistoryModal
+        isOpen={!!historyDoc}
+        document={historyDoc}
+        onClose={() => setHistoryDoc(null)}
         token={token}
       />
 
