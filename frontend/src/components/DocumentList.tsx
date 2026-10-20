@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { Search, Download, Trash2, Users, Upload, Filter, X, FileText, Copy, Check, ShieldAlert, Lock, RefreshCw } from 'lucide-react';
+import { Search, Download, Trash2, Users, Upload, Filter, X, FileText, Copy, Check, ShieldAlert, Lock, RefreshCw, Eye, Flame } from 'lucide-react';
 import type { VaultDocument, User } from '../types';
 
 interface DocumentListProps {
   documents: VaultDocument[];
   currentUser: User;
   onDownload: (doc: VaultDocument) => void;
+  onPreview: (doc: VaultDocument) => void;
   onOpenUpload: () => void;
   onOpenPermissions: (doc: VaultDocument) => void;
   onDeleteDocument: (docId: string) => void;
@@ -17,6 +18,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({
   documents,
   currentUser,
   onDownload,
+  onPreview,
   onOpenUpload,
   onOpenPermissions,
   onDeleteDocument,
@@ -219,6 +221,12 @@ export const DocumentList: React.FC<DocumentListProps> = ({
             <tbody>
               {documents.map((doc) => {
                 const isOwner = doc.owner?.id === currentUser.id || doc.ownerId === currentUser.id;
+                const myGrant = Array.isArray(doc.permissions) && doc.permissions.length > 0 ? doc.permissions[0] : null;
+                const hasGrant = !!myGrant;
+                const isPreviewOnly = !isOwner && !!myGrant?.previewOnly;
+                const isBurnOnDownload = !isOwner && !!myGrant?.burnOnDownload;
+                const canDownload = (isOwner || hasGrant) && !isPreviewOnly;
+                const canPreview = isOwner || hasGrant;
                 const canManage = isOwner; // L-03: Strict owner-only delegation
                 const hashValue = doc.fileHash || 'Verified-Blob';
 
@@ -242,8 +250,44 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                           <FileText size={15} />
                         </div>
                         <div>
-                          <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '13px' }}>
-                            {doc.title}
+                          <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span>{doc.title}</span>
+                            {isBurnOnDownload && (
+                              <span
+                                className="category-pill"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                  borderColor: 'var(--color-rose-border)',
+                                  color: '#fca5a5',
+                                  background: 'var(--color-rose-subtle)',
+                                  fontSize: '10px'
+                                }}
+                                title="Single-use transfer: Access grant closes immediately upon successful download"
+                              >
+                                <Flame size={10} />
+                                <span>Burn-on-Download</span>
+                              </span>
+                            )}
+                            {isPreviewOnly && (
+                              <span
+                                className="category-pill"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                  borderColor: 'var(--color-indigo-border)',
+                                  color: '#c7d2fe',
+                                  background: 'var(--color-indigo-subtle)',
+                                  fontSize: '10px'
+                                }}
+                                title="Restricted to in-browser viewing only; raw binary download blocked"
+                              >
+                                <Eye size={10} />
+                                <span>Preview Only</span>
+                              </span>
+                            )}
                           </div>
                           <div style={{ fontSize: '11px', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>
                             {doc.originalFilename}
@@ -268,10 +312,16 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                     <td>
                       {isOwner ? (
                         <span className="status-pill status-SUCCESS">OWNER</span>
-                      ) : (
+                      ) : hasGrant ? (
                         <span className="status-pill status-SUCCESS" style={{ background: 'var(--color-primary-subtle)', color: '#93c5fd', borderColor: 'var(--color-primary-border)' }}>
                           AUTHORIZED READ
                         </span>
+                      ) : currentUser.role === 'ADMIN' ? (
+                        <span className="status-pill status-FAILED" style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#fca5a5', borderColor: 'rgba(239, 68, 68, 0.25)' }}>
+                          ZERO-TRUST OVERSIGHT
+                        </span>
+                      ) : (
+                        <span className="status-pill status-DENIED">RESTRICTED</span>
                       )}
                     </td>
 
@@ -291,14 +341,59 @@ export const DocumentList: React.FC<DocumentListProps> = ({
 
                     <td style={{ textAlign: 'right' }}>
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                        <button
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => onDownload(doc)}
-                          title="Stream in-memory decrypted blob (Logged to Audit Ledger)"
-                        >
-                          <Download size={12} />
-                          <span>Download</span>
-                        </button>
+                        {canPreview && (
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => onPreview(doc)}
+                            title="In-Browser Ephemeral Preview (Streamed and decrypted directly in memory)"
+                            style={isPreviewOnly ? { borderColor: 'rgba(168, 85, 247, 0.4)', color: '#c084fc' } : {}}
+                          >
+                            <Eye size={12} />
+                            <span>Preview</span>
+                          </button>
+                        )}
+
+                        {canDownload ? (
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => onDownload(doc)}
+                            title={isBurnOnDownload ? "Single-Use Transfer: Access grant will auto-revoke upon download completion" : "Stream in-memory decrypted blob (Logged to Audit Ledger)"}
+                            style={isBurnOnDownload ? { borderColor: 'var(--color-rose-border)', color: '#fca5a5' } : {}}
+                          >
+                            <Download size={12} />
+                            <span>Download</span>
+                          </button>
+                        ) : isPreviewOnly ? (
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            disabled
+                            style={{ opacity: 0.5, cursor: 'not-allowed', borderColor: 'rgba(168, 85, 247, 0.3)' }}
+                            title="Binary download disabled by document policy. Use In-Browser Preview."
+                          >
+                            <Lock size={12} />
+                            <span>Download Disabled</span>
+                          </button>
+                        ) : currentUser.role === 'ADMIN' ? (
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => onDownload(doc)}
+                            title="Zero-Trust Enforced: Security Admins have oversight but cannot download private blobs without an explicit owner grant"
+                            style={{ borderColor: 'rgba(239, 68, 68, 0.3)', color: '#fca5a5' }}
+                          >
+                            <Lock size={12} color="var(--color-rose)" />
+                            <span>Admin Zero-Trust</span>
+                          </button>
+                        ) : (
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            disabled
+                            style={{ opacity: 0.5, cursor: 'not-allowed' }}
+                            title="Access Restricted"
+                          >
+                            <Lock size={12} />
+                            <span>Restricted</span>
+                          </button>
+                        )}
 
                         {canManage && (
                           <button

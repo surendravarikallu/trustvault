@@ -26,11 +26,17 @@ export interface LoginResponse {
   message?: string;
 }
 
-export async function apiLogin(email: string, password: string, enrollMfa?: boolean): Promise<LoginResponse> {
+export async function apiLogin(usernameOrEmail: string, password: string, enrollMfa?: boolean): Promise<LoginResponse> {
+  const cleanId = usernameOrEmail.trim();
   const res = await fetch('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password, enrollMfa })
+    body: JSON.stringify({
+      email: cleanId,
+      username: cleanId,
+      password,
+      enrollMfa
+    })
   });
 
   const data = await res.json();
@@ -193,6 +199,21 @@ export async function downloadDocument(id: string, originalFilename: string, tok
   window.URL.revokeObjectURL(blobUrl);
 }
 
+export async function fetchDocumentBlobUrl(id: string, token: string, preview = false): Promise<string> {
+  const url = preview ? `/api/documents/${id}/download?preview=true` : `/api/documents/${id}/download`;
+  const res = await fetch(url, {
+    headers: getAuthHeader(token)
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Fetch failed' }));
+    throw new Error(err.error || `Request failed with HTTP ${res.status}`);
+  }
+
+  const blob = await res.blob();
+  return window.URL.createObjectURL(blob);
+}
+
 export async function deleteDocument(id: string, token: string): Promise<void> {
   const res = await fetch(`/api/documents/${id}`, {
     method: 'DELETE',
@@ -222,7 +243,8 @@ export async function grantPermission(
   targetEmail: string,
   permissionLevel: PermissionLevel,
   expiresAt: string | null,
-  token: string
+  token: string,
+  options?: { burnOnDownload?: boolean; previewOnly?: boolean }
 ): Promise<void> {
   const res = await fetch(`/api/documents/${docId}/permissions`, {
     method: 'POST',
@@ -230,7 +252,13 @@ export async function grantPermission(
       ...getAuthHeader(token),
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({ targetEmail, permissionLevel, expiresAt })
+    body: JSON.stringify({
+      targetEmail,
+      permissionLevel,
+      expiresAt,
+      burnOnDownload: options?.burnOnDownload ?? false,
+      previewOnly: options?.previewOnly ?? false
+    })
   });
 
   const data = await res.json();
@@ -337,4 +365,61 @@ export async function deactivateUser(userId: string, token: string): Promise<voi
   if (!res.ok) {
     throw new Error(data.error || 'Failed to deactivate user.');
   }
+}
+
+export async function apiAdminCreateUser(
+  token: string,
+  payload: { name: string; email: string; password: string; role: Role }
+): Promise<{ message: string; user: User }> {
+  const res = await fetch('/api/admin/users', {
+    method: 'POST',
+    headers: {
+      ...getAuthHeader(token),
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || 'Failed to create user.');
+  }
+  return data;
+}
+
+export async function apiAdminResetPassword(
+  token: string,
+  userId: string,
+  newPassword: string
+): Promise<{ message: string }> {
+  const res = await fetch(`/api/admin/users/${userId}/reset-password`, {
+    method: 'POST',
+    headers: {
+      ...getAuthHeader(token),
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ newPassword })
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || 'Failed to reset password.');
+  }
+  return data;
+}
+
+export async function apiAdminResetMfa(
+  token: string,
+  userId: string
+): Promise<{ message: string }> {
+  const res = await fetch(`/api/admin/users/${userId}/reset-2fa`, {
+    method: 'POST',
+    headers: getAuthHeader(token)
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || 'Failed to reset 2FA.');
+  }
+  return data;
 }

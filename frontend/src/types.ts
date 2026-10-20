@@ -9,12 +9,16 @@ export interface User {
   role: Role;
   isActive?: boolean;
   tokenVersion?: number;
+  mfaEnabled?: boolean;
 }
 
 export interface DocumentPermission {
   id: string;
   permissionLevel: PermissionLevel;
   expiresAt: string | null;
+  burnOnDownload?: boolean;
+  previewOnly?: boolean;
+  downloadCount?: number;
   userId?: string;
   user: {
     id: string;
@@ -50,6 +54,9 @@ export interface VaultDocument {
   permissions?: {
     permissionLevel: PermissionLevel;
     expiresAt: string | null;
+    burnOnDownload?: boolean;
+    previewOnly?: boolean;
+    downloadCount?: number;
   }[];
 }
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, UserPlus, Trash2, ShieldCheck, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { X, UserPlus, Trash2, ShieldCheck, AlertCircle, CheckCircle2, Flame, Eye } from 'lucide-react';
 import type { VaultDocument, DocumentPermission, ReviewerSuggestion, PermissionLevel } from '../types';
 import {
   fetchDocumentPermissions,
@@ -25,6 +25,8 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
   const [targetEmail, setTargetEmail] = useState('');
   const [permissionLevel, setPermissionLevel] = useState<PermissionLevel>('READ');
   const [expiresAt, setExpiresAt] = useState('');
+  const [burnOnDownload, setBurnOnDownload] = useState(false);
+  const [previewOnly, setPreviewOnly] = useState(false);
   const [suggestions, setSuggestions] = useState<ReviewerSuggestion[]>([]);
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +38,8 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
       setSuggestions([]);
       setError(null);
       setSuccessMsg(null);
+      setBurnOnDownload(false);
+      setPreviewOnly(false);
     }
   }, [isOpen, document]);
 
@@ -61,11 +65,14 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
         targetEmail.trim(),
         permissionLevel,
         expiresAt ? new Date(expiresAt).toISOString() : null,
-        token
+        token,
+        { burnOnDownload, previewOnly }
       );
       setSuccessMsg(`Granted ${permissionLevel} access to ${targetEmail}.`);
       setTargetEmail('');
       setExpiresAt('');
+      setBurnOnDownload(false);
+      setPreviewOnly(false);
       await loadGrantees();
     } catch (err: any) {
       setError(err.message);
@@ -291,6 +298,47 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
                 <span>Grant</span>
               </button>
             </div>
+
+            {/* Advanced Ephemeral Sharing Controls */}
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '16px',
+                marginTop: '10px',
+                padding: '8px 12px',
+                background: 'var(--bg-surface)',
+                borderRadius: 'var(--radius-xs)',
+                border: '1px solid var(--border-subtle)',
+                fontSize: '11px'
+              }}
+            >
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+                <input
+                  type="checkbox"
+                  checked={burnOnDownload}
+                  onChange={(e) => setBurnOnDownload(e.target.checked)}
+                  style={{ accentColor: 'var(--color-rose)' }}
+                />
+                <Flame size={12} color="var(--color-rose)" />
+                <span style={{ fontWeight: 500, color: burnOnDownload ? '#fca5a5' : 'inherit' }}>
+                  Burn-on-Download (Revokes grant immediately upon successful download completion)
+                </span>
+              </label>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+                <input
+                  type="checkbox"
+                  checked={previewOnly}
+                  onChange={(e) => setPreviewOnly(e.target.checked)}
+                  style={{ accentColor: 'var(--color-indigo)' }}
+                />
+                <Eye size={12} color="var(--color-indigo)" />
+                <span style={{ fontWeight: 500, color: previewOnly ? '#c7d2fe' : 'inherit' }}>
+                  In-Browser Preview Only (Prevents raw binary file downloads)
+                </span>
+              </label>
+            </div>
           </form>
 
           {/* Active Grantees List */}
@@ -309,7 +357,7 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
                   <thead>
                     <tr>
                       <th>Grantee</th>
-                      <th>Permission</th>
+                      <th>Permission & Policies</th>
                       <th>Expiration</th>
                       <th style={{ textAlign: 'right' }}>Revoke</th>
                     </tr>
@@ -327,9 +375,50 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
                           </td>
 
                           <td>
-                            <span className="category-pill" style={{ borderColor: 'var(--color-primary-border)', color: '#93c5fd' }}>
-                              {g.permissionLevel}
-                            </span>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
+                              <span className="category-pill" style={{ borderColor: 'var(--color-primary-border)', color: '#93c5fd' }}>
+                                {g.permissionLevel}
+                              </span>
+                              {g.burnOnDownload && (
+                                <span
+                                  className="category-pill"
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px',
+                                    borderColor: 'var(--color-rose-border)',
+                                    color: '#fca5a5',
+                                    background: 'var(--color-rose-subtle)'
+                                  }}
+                                  title="Revokes access immediately upon successful download completion"
+                                >
+                                  <Flame size={10} />
+                                  <span>Burn-on-Download</span>
+                                </span>
+                              )}
+                              {g.previewOnly && (
+                                <span
+                                  className="category-pill"
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px',
+                                    borderColor: 'var(--color-indigo-border)',
+                                    color: '#c7d2fe',
+                                    background: 'var(--color-indigo-subtle)'
+                                  }}
+                                  title="User can only view inside browser; binary downloads blocked"
+                                >
+                                  <Eye size={10} />
+                                  <span>Preview Only</span>
+                                </span>
+                              )}
+                              {(g.downloadCount ?? 0) > 0 && (
+                                <span className="mono-cell" style={{ fontSize: '10px', color: 'var(--text-dim)' }}>
+                                  ({g.downloadCount} dl)
+                                </span>
+                              )}
+                            </div>
                           </td>
 
                           <td className="mono-cell" style={{ fontSize: '11px' }}>
