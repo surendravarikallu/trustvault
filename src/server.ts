@@ -13,13 +13,13 @@ import { pingDatabaseHealth } from './dal/backupDal';
 
 export const app = express();
 
-// 1. Reverse proxy configuration for Cloudflare Tunnel
+// 1. Reverse proxy configuration for Cloudflare Tunnel (1 hop)
 app.set('trust proxy', 1);
 
 // 2. Simple query parser to prevent Express qs nested object injection attacks
 app.set('query parser', 'simple');
 
-// 3. Security headers & CORS
+// 3. Security headers & CORS with Cloudflare Edge support
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -29,12 +29,23 @@ app.use(
         fontSrc: ["'self'", 'https:', 'data:'],
         formAction: ["'self'"],
         frameAncestors: ["'self'"],
-        imgSrc: ["'self'", 'data:', 'blob:'],
+        imgSrc: ["'self'", 'data:', 'blob:', 'https://challenges.cloudflare.com'],
         objectSrc: ["'self'", 'blob:'],
-        frameSrc: ["'self'", 'blob:'],
-        scriptSrc: ["'self'"],
+        frameSrc: ["'self'", 'blob:', 'https://challenges.cloudflare.com'],
+        scriptSrc: [
+          "'self'",
+          "'unsafe-inline'",
+          'https://static.cloudflareinsights.com',
+          'https://challenges.cloudflare.com'
+        ],
         scriptSrcAttr: ["'none'"],
         styleSrc: ["'self'", 'https:', "'unsafe-inline'"],
+        connectSrc: [
+          "'self'",
+          'https://cloudflareinsights.com',
+          'https://static.cloudflareinsights.com',
+          'https://challenges.cloudflare.com'
+        ],
         upgradeInsecureRequests: []
       }
     }
@@ -104,6 +115,7 @@ if (fs.existsSync(frontendDist)) {
     if (req.path.startsWith('/api') || req.path.startsWith('/storage') || path.extname(req.path)) {
       return next();
     }
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.sendFile(path.join(frontendDist, 'index.html'));
   });
 }
