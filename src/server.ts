@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
+import { csrfProtection } from './middleware/csrf';
 import { config } from './config';
 import { authRouter } from './routes/authRoutes';
 import { documentRouter } from './routes/documentRoutes';
@@ -52,8 +53,13 @@ app.use(
     }
   })
 );
-app.use(cors({ origin: true, credentials: true }));
+app.use(cors({
+  origin: true,
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-TrustVault-Client', 'X-Requested-With', 'x-pdf-otp']
+}));
 app.use(cookieParser());
+app.use(csrfProtection);
 
 // 4. Global IP rate limiter: Configurable threshold, bypasses internal health probes
 const globalLimiter = rateLimit({

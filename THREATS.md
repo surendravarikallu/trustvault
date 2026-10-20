@@ -411,6 +411,64 @@ TrustVault handles sensitive enterprise documents under a strict **Zero-Trust & 
 
 ---
 
+### Category J: Advanced Defenses & Hardened Attack Vectors (T-48 to T-53)
+
+#### T-48: Cross-Site Request Forgery (CSRF) via Cookie Sessions (CWE-352)
+* **Attacker Scenario:** An authenticated victim user who logged in via browser has an active, secure `HttpOnly` session cookie (`__Host-trustvault_token` / `trustvault_token`). The user is lured to an attacker-controlled website (`evil.com`), which executes a background cross-origin `POST`, `PUT`, or `DELETE` against TrustVault endpoints (e.g. deleting documents, delegating permissions, changing roles).
+* **Defense Mechanism:**
+  - Dedicated `csrfProtection` middleware (`src/middleware/csrf.ts`) inspects all state-mutating HTTP methods (`POST`, `PUT`, `DELETE`, `PATCH`).
+  - When a request relies on Cookie authentication without an `Authorization: Bearer` header:
+    1. **Custom Client Header Enforcement:** Enforces presence of custom client header `X-TrustVault-Client: 1` (or `X-Requested-With`). Web browsers strictly prohibit cross-origin requests from injecting arbitrary custom headers unless explicitly preflighted and permitted by CORS.
+    2. **Origin & Referer Whitelist Validation:** Evaluates `Origin` and `Referer` headers against the server's host header and loopback interfaces (`127.0.0.1`, `localhost`). Untrusted third-party origins are rejected with `HTTP 403 Forbidden` (`"CSRF validation failed: Cross-origin request rejected."`).
+    3. **Automated Client Safety:** API callers authenticating solely via `Authorization: Bearer` (e.g., CLI tools, microservice pipelines, automated Jest suites) bypass CSRF checking as web browsers never automatically attach Bearer credentials across origins.
+* **Automated Test:** `tests/hardened-attacks.test.ts` (`CSRF-01`, `CSRF-02`, `CSRF-03`).
+
+#### T-49: Denial of Service / Event Loop Starvation via Dynamic PDF Cryptographic Transform Bursts (CWE-400)
+* **Attacker Scenario:** An authorized grantee repeatedly requests download or preview of extremely large, deeply nested, or 1,000-page PDF files configured with dynamic forensic watermarking or OTP password encryption. Synchronous PDF AST parsing and vector rendering monopolizes Node.js event loop threads, spiking p95/p99 response latency and causing service degradation or OOM crashes for concurrent users.
+* **Defense Mechanism:**
+  - **Payload Size Threshold Bounding:** `MAX_JIT_PDF_SIZE_BYTES = 25MB` strictly rejects dynamic in-memory JIT watermarking and password encryption on files larger than 25MB.
+  - **Page Execution Ceiling:** `MAX_JIT_WATERMARK_PAGES = 150` limits forensic diagonal vector rendering to the first 150 pages, ensuring worst-case per-request CPU time remains under 200ms.
+  - **Asynchronous Concurrency Semaphore:** `acquirePdfSlot()` caps simultaneous CPU-bound PDF operations at 5 concurrent worker slots. Excess burst requests are queued with a timeout rather than starving core event loop routines (authentication, health checks, database queries).
+* **Automated Test:** `tests/hardened-attacks.test.ts` (`DOS-PDF-01`, `DOS-PDF-02`).
+
+#### T-50: Unauthenticated Distributed Cache Store & Lateral Redis Pivot (CWE-306)
+* **Attacker Scenario:** An adversary on the local host or an untrusted container in a shared Docker environment connects to Redis (port 6385) without credentials, attempting to inspect cached user sessions, poison role demotions, flush token versions, or pivot laterally into the application stack.
+* **Defense Mechanism:**
+  - Dedicated `trustvault-redis` Docker container isolated on port 6385 with mandatory password authentication (`requirepass "TrustVault_Redis_2026_SecureKey!"`).
+  - Unauthenticated commands are rejected with `NOAUTH Authentication required.`.
+  - Application connects via authenticated connection string `redis://:password@127.0.0.1:6385`.
+  - In-memory fallback map ensures zero single-point-of-failure if Redis is restarted or temporarily unreachable.
+* **Automated Test:** `tests/hardened-attacks.test.ts` (`REDIS-01`).
+
+#### T-51: Header-Based Client IP Spoofing & Audit Trail Poisoning (CWE-290)
+* **Attacker Scenario:** An attacker queries the application port or injects arbitrary values into `cf-connecting-ip` or `x-forwarded-for` headers (e.g. `8.8.8.8`, `<script>`, or SQL formatting) to falsify the actor origin recorded in the immutable HMAC-SHA256 audit ledger.
+* **Defense Mechanism:**
+  - Loopback network binding (`127.0.0.1`) ensures TrustVault accepts connections exclusively via the local Cloudflare Tunnel or local proxy.
+  - `getRequestContext()` inspects direct TCP socket origin (`socket.remoteAddress`). Proxy headers (`cf-connecting-ip`, `x-forwarded-for`) are strictly ignored unless the direct socket connection is verified to originate from trusted loopback (`127.0.0.1`, `::1`) or private proxy subnets.
+  - Strict IP syntax validation via `net.isIP()` discards non-standard or malicious header strings, falling back to verified socket IP.
+  - User-Agent sanitization strips non-printable ASCII and terminal escape sequences (`\x00-\x1F\x7F`) and truncates to 512 characters to prevent log forging and terminal injection attacks.
+* **Automated Test:** `tests/hardened-attacks.test.ts` (`IP-SPOOF-01`, `IP-SPOOF-02`, `IP-SPOOF-03`).
+
+#### T-52: Static Master Key Exposure & Cryptographic Weak Derivation (CWE-326 / CWE-798)
+* **Attacker Scenario:** Cryptographic at-rest storage keys derived using a single-iteration SHA-256 hash without salt or domain separation, or fallback to sharing secrets with JWT tokens. If an attacker recovers one secret, they derive the storage encryption key.
+* **Defense Mechanism:**
+  - Standard-compliant key derivation using RFC 5869 HKDF-SHA256 (`crypto.hkdfSync`).
+  - Dedicated domain salt (`trustvault_storage_encryption_domain_salt_2026`) and info tag (`trustvault-aes256-gcm-at-rest-v2`).
+  - Independent `STORAGE_ENCRYPTION_KEY` secret separated from `JWT_SECRET`.
+  - Two-tier decryption fallback transparently decrypts legacy v1 blobs while ensuring all new files are encrypted with the 256-bit HKDF key.
+* **Automated Test:** `tests/hardened-attacks.test.ts` (`HKDF-01`).
+
+#### T-53: Analog Hole, Display Scraping, Raw Browser Printing & Attribution Evasion (CWE-200 / CWE-592)
+* **Attacker Scenario:** An authorized grantee opens an in-browser preview or watermarked PDF, then uses browser `Ctrl+P` (Print to PDF), screen selection copy-paste, or photographic capture of the screen, attempting to crop out visible watermarks and exfiltrate data without attribution.
+* **Defense Mechanism:**
+  - **Steganographic Provenance**: Embeds imperceptible zero-width Unicode characters (`\u200B` and `\u200C`) encoding the recipient's identity, timestamp, and unique trace hash into document metadata and strings.
+  - **PDF Metadata Fingerprinting**: Sets PDF dictionary fields (`Author`, `Keywords`, `Producer`, `Subject`) with cryptographically verifiable trace identifiers and recipient email tags.
+  - **Browser Print Shield**: `@media print` CSS hides all document content (`body * { visibility: hidden !important; }`) and projects a full-screen violation warning notice when printing or exporting via browser.
+  - **Selection & Context Menu Guards**: Disables right-click context menu (`onContextMenu={(e) => e.preventDefault()}`) and text highlighting (`user-select: none !important`) on sensitive preview viewports.
+* **Automated Test:** `tests/hardened-attacks.test.ts` (`STEGO-01`, `STEGO-02`).
+
+---
+
 ## 6. Threat Traceability & Verification Summary
 
 | Category | Threats Covered | Automated Test Suites | Total Tests | Simulation Scenarios |
@@ -424,7 +482,8 @@ TrustVault handles sensitive enterprise documents under a strict **Zero-Trust & 
 | **G: Multi-Factor Authentication** | `T-32`, `T-41` | `tests/mfa-totp.test.ts` | 9 | 1 |
 | **H: Disaster Recovery & Encryption** | `T-34`, `T-35` | `tests/backup-disaster-recovery.test.ts` | 6 | 2 |
 | **I: Ephemeral Sharing & Governance** | `T-43` to `T-47` | `tests/governance-and-sharing.test.ts` | 5 | 3 |
-| **TOTALS** | **47 Modeled Threats (T-01 to T-47)** | **9 Automated Test Suites + 2 Scripts** | **57 Tests** | **35 Scenarios** |
+| **J: Advanced Hardened Attack Vectors** | `T-48` to `T-53` | `tests/hardened-attacks.test.ts` | 12 | 6 |
+| **TOTALS** | **53 Modeled Threats (T-01 to T-53)** | **11 Automated Test Suites + 2 Scripts** | **72 Tests** | **41 Scenarios** |
 
 
 

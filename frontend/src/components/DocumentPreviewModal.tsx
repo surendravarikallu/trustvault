@@ -344,7 +344,8 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
 
         {/* Viewport */}
         <div
-          className="modal-body"
+          className="modal-body secure-preview-shield"
+          onContextMenu={(e) => e.preventDefault()}
           style={{
             padding: 0,
             flex: 1,
@@ -371,6 +372,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
             <div style={{ padding: '24px', display: 'flex', justifyContent: 'center', width: '100%', minHeight: 'min-content' }}>
               <canvas
                 ref={canvasRef}
+                onContextMenu={(e) => e.preventDefault()}
                 style={{
                   boxShadow: '0 8px 30px rgba(0, 0, 0, 0.7)',
                   borderRadius: '4px',

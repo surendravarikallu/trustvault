@@ -10,7 +10,13 @@ import type {
 } from './types';
 
 function getAuthHeader(token: string | null): Record<string, string> {
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  const headers: Record<string, string> = {
+    'X-TrustVault-Client': '1'
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
 }
 
 export interface LoginResponse {

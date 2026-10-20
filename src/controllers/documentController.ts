@@ -21,10 +21,56 @@ import { recordDownloadAndEnforceQuota, burnDocumentPermission } from '../dal/pe
 import { applyForensicWatermark, protectPdfWithPassword } from '../utils/pdfEngine';
 import bcrypt from 'bcrypt';
 
+import net from 'net';
+
+/**
+ * Sanitizes and securely resolves client IP and User-Agent.
+ * Defends against Header-Based IP Spoofing & Audit Log Poisoning (CWE-290 - Threat T-51).
+ */
 export function getRequestContext(req: AuthenticatedRequest): RequestContext {
-  const ip = (req.headers['cf-connecting-ip'] as string) || req.ip || req.socket.remoteAddress || '127.0.0.1';
-  const userAgent = req.headers['user-agent'] || 'Unknown';
-  return { ip, userAgent };
+  const socketIp = req.socket.remoteAddress || '';
+  const isLoopbackOrLocal =
+    socketIp === '127.0.0.1' ||
+    socketIp === '::1' ||
+    socketIp === '::ffff:127.0.0.1' ||
+    socketIp.startsWith('10.') ||
+    socketIp.startsWith('172.16.') ||
+    socketIp.startsWith('192.168.');
+
+  let resolvedIp = '';
+
+  // Only trust proxy-provided headers if direct socket connection is from trusted local loopback/proxy
+  if (isLoopbackOrLocal) {
+    const cfIp = req.headers['cf-connecting-ip'];
+    const xff = req.headers['x-forwarded-for'];
+
+    if (typeof cfIp === 'string') {
+      const candidate = cfIp.trim();
+      if (net.isIP(candidate)) {
+        resolvedIp = candidate;
+      }
+    }
+
+    if (!resolvedIp && typeof xff === 'string') {
+      const firstIp = xff.split(',')[0].trim();
+      if (net.isIP(firstIp)) {
+        resolvedIp = firstIp;
+      }
+    }
+  }
+
+  // Fallback to Express evaluated req.ip or raw socket address
+  if (!resolvedIp) {
+    const rawIp = req.ip || req.socket.remoteAddress || '127.0.0.1';
+    const cleanRaw = rawIp.replace(/^::ffff:/, '').trim();
+    resolvedIp = net.isIP(cleanRaw) ? cleanRaw : '127.0.0.1';
+  }
+
+  const rawUa = (req.headers['user-agent'] || 'Unknown').toString();
+  // Strip non-printable control characters to prevent terminal escape injection in logs
+  const sanitizedUa = rawUa.replace(/[\x00-\x1F\x7F]/g, '').slice(0, 512);
+
+  return { ip: resolvedIp, userAgent: sanitizedUa };
 }
 
 const CreateDocumentSchema = z.object({

@@ -1,6 +1,7 @@
 import Redis from 'ioredis';
+import { config } from '../config';
 
-const redisUrl = process.env.REDIS_URL || 'redis://127.0.0.1:6385';
+const redisUrl = config.redisUrl;
 
 let redisInstance: Redis | null = null;
 let isRedisAvailable = false;

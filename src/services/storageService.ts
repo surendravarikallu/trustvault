@@ -9,8 +9,22 @@ const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
 const AUTH_TAG_LENGTH = 16;
 
-// Derive 32-byte storage master key
-const STORAGE_KEY = crypto
+const HKDF_SALT = Buffer.from('trustvault_storage_encryption_domain_salt_2026');
+const HKDF_INFO = Buffer.from('trustvault-aes256-gcm-at-rest-v2');
+
+// Hardened RFC 5869 HKDF-SHA256 derived storage key with domain separation (CWE-326 - Threat T-52)
+const STORAGE_KEY = Buffer.from(
+  crypto.hkdfSync(
+    'sha256',
+    Buffer.from(config.storageEncryptionKey || process.env.STORAGE_ENCRYPTION_KEY || 'trustvault_storage_aes256_master_key_2026_super_secure'),
+    HKDF_SALT,
+    HKDF_INFO,
+    32
+  )
+);
+
+// Legacy fallback key for backward compatibility with v1 encrypted blobs
+const LEGACY_STORAGE_KEY = crypto
   .createHash('sha256')
   .update(process.env.STORAGE_ENCRYPTION_KEY || config.jwtSecret + '_blob_at_rest_key_2026')
   .digest();
@@ -97,10 +111,20 @@ export class StorageService {
       offset += AUTH_TAG_LENGTH;
       const ciphertext = rawData.subarray(offset);
 
-      const decipher = crypto.createDecipheriv(ALGORITHM, STORAGE_KEY, iv);
-      decipher.setAuthTag(authTag);
-
-      return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+      try {
+        const decipher = crypto.createDecipheriv(ALGORITHM, STORAGE_KEY, iv);
+        decipher.setAuthTag(authTag);
+        return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+      } catch (primaryErr) {
+        // Fall back to legacy key for blobs created prior to HKDF upgrade
+        try {
+          const legacyDecipher = crypto.createDecipheriv(ALGORITHM, LEGACY_STORAGE_KEY, iv);
+          legacyDecipher.setAuthTag(authTag);
+          return Buffer.concat([legacyDecipher.update(ciphertext), legacyDecipher.final()]);
+        } catch {
+          throw primaryErr;
+        }
+      }
     }
 
     // Unencrypted legacy file
