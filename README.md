@@ -129,6 +129,6 @@ npm run tunnel
 
 ## 5. Core Documentation
 
-- **[`THREATS.md`](./THREATS.md):** Catalog of 44 modeled threat vectors (T-01 to T-44) spanning Categories A through G, Section 3 (Structural Enforcement & Mutation Resistance), Section 4 (Edge Perimeter Defense & Operational Security), and Section 5 (Advanced Ephemeral Sharing & Identity Governance).
-- **[`PROMPTS.md`](./PROMPTS.md):** Human engineering oversight log with 17 entries documenting developer interventions, AI flaw corrections, and Git commit references.
+- **[`THREATS.md`](./THREATS.md):** Catalog of 47 modeled threat vectors (T-01 to T-47) spanning Categories A through G, Section 3 (Structural Enforcement & Mutation Resistance), Section 4 (Edge Perimeter Defense & Operational Security), Section 5 (Advanced Ephemeral Sharing & Identity Governance), and Section 6 (Threat Traceability & Verification Summary).
+- **[`PROMPTS.md`](./PROMPTS.md):** Human engineering oversight log with 20 entries documenting developer interventions, AI flaw corrections, and Git commit references.
 - **[`CONTEXT_HANDOVER.md`](./CONTEXT_HANDOVER.md):** Complete architectural analysis, 19 cataloged vulnerability fixes (L-01 to L-19), database schemas, and engineering invariants.
