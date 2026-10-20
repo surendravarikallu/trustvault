@@ -76,13 +76,13 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
             background: 'var(--color-primary-subtle)',
             border: '1px solid var(--color-primary-border)',
             borderRadius: 'var(--radius-sm)',
-            color: '#60a5fa',
+            color: 'var(--color-primary)',
             marginBottom: '12px'
           }}
         >
           <Shield size={24} />
         </div>
-        <h1 style={{ fontSize: '20px', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-primary)', margin: 0 }}>
+        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '22px', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-primary)', margin: 0 }}>
           TrustVault Enterprise Security Console
         </h1>
         <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '6px' }}>

@@ -215,7 +215,7 @@ export async function loadDocumentFor(
       throw new ForbiddenError('Unrecognized document action.');
   }
 }
-const userGrantSelect: Prisma.DocumentPermissionSelect = {
+const userGrantSelect = {
   permissionLevel: true,
   expiresAt: true,
   burnOnDownload: true,

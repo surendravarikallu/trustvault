@@ -1,22 +1,27 @@
-/* TrustVault Enterprise Zero-Trust Console — Design System & Tokens
-   Strict Enterprise Security UI (HashiCorp / Cloudflare / AWS KMS Aesthetic)
-   Zero AI-generated tropes: No neon cyan gradients, no fuzzy glow blobs, no generic glassmorphism
-*/
-
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+/* ============================================================
+   TrustVault Enterprise Zero-Trust Console — Design System & Tokens
+   Strict Enterprise Security UI (AWS KMS / Cloudflare / HashiCorp Grade)
+   Ultra-Professional: Crisp Typography, Precision Hairlines, High-Contrast Data Density
+   ============================================================ */
 
 :root {
-  /* Surface & Canvas Hierarchy */
-  --bg-app: #070a12;
-  --bg-surface: #0d131f;
-  --bg-surface-raised: #121a2b;
-  --bg-surface-hover: #172136;
-  --bg-card: #0f1626;
+  /* Typography Hierarchy */
+  --font-display: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
 
-  /* Enterprise Borders & Dividers */
-  --border-subtle: #192234;
-  --border-default: #222f46;
-  --border-strong: #2e3e5c;
+  /* Surfaces & Velvet Dark Canvas */
+  --bg-app: #080b11;
+  --bg-surface: #0e1420;
+  --bg-surface-raised: #141c2c;
+  --bg-surface-hover: #1a253a;
+  --bg-card: #0e1420;
+  --bg-topbar: #05070c;
+
+  /* Structural Hairline Borders */
+  --border-subtle: #162030;
+  --border-default: #1e2b42;
+  --border-strong: #2a3c5a;
   --border-focus: #3b82f6;
 
   /* Typography Colors */
@@ -28,6 +33,7 @@
   /* Enterprise Security Accents (Restrained, High-Contrast) */
   --color-primary: #2563eb;
   --color-primary-hover: #1d4ed8;
+  --color-primary-text: #ffffff;
   --color-primary-subtle: rgba(37, 99, 235, 0.12);
   --color-primary-border: rgba(37, 99, 235, 0.35);
 
@@ -47,19 +53,15 @@
   --color-indigo-subtle: rgba(99, 102, 241, 0.1);
   --color-indigo-border: rgba(99, 102, 241, 0.28);
 
-  /* Fonts */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
-
-  /* Radii — Sharp, Professional */
+  /* Corner Radii — Razor Sharp, Disciplined */
   --radius-xs: 3px;
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
 
-  /* Subtle Crisp Shadows */
+  /* Elevation Shadows */
   --shadow-elevation: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-modal: 0 10px 25px -5px rgba(0, 0, 0, 0.8), 0 8px 10px -6px rgba(0, 0, 0, 0.8);
+  --shadow-modal: 0 16px 36px -6px rgba(0, 0, 0, 0.85), 0 8px 12px -6px rgba(0, 0, 0, 0.8);
 }
 
 * {
@@ -73,19 +75,26 @@ html, body {
   color: var(--text-primary);
   font-family: var(--font-sans);
   font-size: 13px;
-  line-height: 1.45;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
 }
 
-/* System Status Bar (Enterprise Top Bar) */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+/* ============================================================
+   System Status Bar (Enterprise Top Telemetry Strip)
+   ============================================================ */
 .system-status-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #05080e;
+  background: var(--bg-topbar);
   border-bottom: 1px solid var(--border-subtle);
-  padding: 4px 16px;
+  padding: 5px 18px;
   font-size: 11px;
   color: var(--text-muted);
 }
@@ -110,10 +119,12 @@ html, body {
 }
 
 .status-dot.active {
-  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.25);
 }
 
-/* Main Top Navigation */
+/* ============================================================
+   Main Top Navigation Bar
+   ============================================================ */
 .navbar {
   display: flex;
   align-items: center;
@@ -141,13 +152,14 @@ html, body {
   background: var(--color-primary-subtle);
   border: 1px solid var(--color-primary-border);
   border-radius: var(--radius-sm);
-  color: #60a5fa;
+  color: var(--color-primary);
 }
 
 .brand-title {
-  font-size: 14px;
+  font-family: var(--font-display);
+  font-size: 15px;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
   color: var(--text-primary);
   display: flex;
   align-items: center;
@@ -155,6 +167,7 @@ html, body {
 }
 
 .brand-badge {
+  font-family: var(--font-sans);
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
@@ -170,7 +183,7 @@ html, body {
 .principal-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .persona-selector {
@@ -205,6 +218,7 @@ html, body {
   font-weight: 500;
   cursor: pointer;
   transition: all 0.12s ease;
+  font-family: var(--font-sans);
 }
 
 .persona-btn:hover {
@@ -263,14 +277,15 @@ html, body {
   border: 1px solid var(--border-default);
 }
 
-/* Main Workspace Container */
+/* ============================================================
+   Workspace Container & Navigation Tabs
+   ============================================================ */
 .workspace-container {
   max-width: 1400px;
   margin: 0 auto;
   padding: 20px 24px 60px 24px;
 }
 
-/* Navigation Tabs — Enterprise Underline Style */
 .nav-tabs {
   display: flex;
   align-items: center;
@@ -293,6 +308,7 @@ html, body {
   margin-bottom: -1px;
   cursor: pointer;
   transition: all 0.12s ease;
+  font-family: var(--font-sans);
 }
 
 .nav-tab-btn:hover {
@@ -315,7 +331,9 @@ html, body {
   color: var(--text-muted);
 }
 
-/* Control Toolbar & Filters */
+/* ============================================================
+   Control Toolbar & Search
+   ============================================================ */
 .toolbar-panel {
   display: flex;
   align-items: center;
@@ -351,7 +369,9 @@ html, body {
   color: var(--text-dim);
 }
 
-/* Enterprise Buttons */
+/* ============================================================
+   Enterprise Buttons
+   ============================================================ */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -372,6 +392,7 @@ html, body {
   background: var(--color-primary);
   color: #ffffff;
   border-color: #1d4ed8;
+  font-weight: 600;
 }
 
 .btn-primary:hover {
@@ -410,7 +431,9 @@ html, body {
   font-size: 10px;
 }
 
-/* Enterprise Data Tables */
+/* ============================================================
+   Enterprise Data Tables
+   ============================================================ */
 .data-table-wrapper {
   background: var(--bg-surface);
   border: 1px solid var(--border-default);
@@ -437,6 +460,7 @@ html, body {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-muted);
+  font-family: var(--font-sans);
 }
 
 .data-table tbody tr {
@@ -465,7 +489,7 @@ html, body {
   color: var(--text-secondary);
 }
 
-/* Category & Clearance Pills */
+/* Category & Hash Badges */
 .category-pill {
   display: inline-block;
   font-size: 10px;
@@ -521,7 +545,7 @@ html, body {
   border: 1px solid var(--color-amber-border);
 }
 
-/* Information Barrier Empty State (Zero-Trust Eve View) */
+/* Information Barrier Empty State */
 .zero-trust-empty-card {
   padding: 48px 24px;
   text-align: center;
@@ -544,7 +568,7 @@ html, body {
 }
 
 .zero-trust-empty-card h4 {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 6px;
@@ -558,7 +582,7 @@ html, body {
   line-height: 1.5;
 }
 
-/* Enterprise Metrics Grid (Audit Ledger View) */
+/* Enterprise Metrics Grid */
 .metrics-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -580,9 +604,11 @@ html, body {
   letter-spacing: 0.05em;
   color: var(--text-muted);
   margin-bottom: 6px;
+  font-family: var(--font-sans);
 }
 
 .metric-value {
+  font-family: var(--font-display);
   font-size: 18px;
   font-weight: 700;
   color: var(--text-primary);
@@ -598,7 +624,9 @@ html, body {
   font-family: var(--font-mono);
 }
 
-/* Modal Dialogs */
+/* ============================================================
+   Modal Windows & Forms
+   ============================================================ */
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -631,9 +659,15 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 18px;
+  padding: 14px 18px;
   background: #080d17;
   border-bottom: 1px solid var(--border-default);
+}
+
+.modal-header h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
 .modal-body {
@@ -652,7 +686,7 @@ html, body {
   border-top: 1px solid var(--border-default);
 }
 
-/* Forms & Inputs */
+/* Form Controls */
 .form-group {
   margin-bottom: 14px;
 }
@@ -677,7 +711,7 @@ textarea {
   background: var(--bg-surface-raised);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
-  padding: 6px 10px;
+  padding: 7px 10px;
   color: var(--text-primary);
   font-family: var(--font-sans);
   font-size: 12px;
