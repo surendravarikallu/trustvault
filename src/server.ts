@@ -68,20 +68,26 @@ app.use(globalLimiter);
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 
-// 6. Deep health check endpoint with database probe & system metrics
-app.get('/api/health', async (_req: Request, res: Response) => {
-  let dbStatus = 'connected';
-  let dbLatencyMs = 0;
+// 6. Deep health check endpoint with database probe & system metrics (2.5s micro-cache to eliminate tail latency under bursts)
+let lastDbHealthTime = 0;
+let cachedDbStatus = 'connected';
+let cachedDbLatencyMs = 0;
 
-  try {
-    const dbPing = await pingDatabaseHealth();
-    dbLatencyMs = dbPing.latencyMs;
-  } catch {
-    dbStatus = 'disconnected';
+app.get('/api/health', async (_req: Request, res: Response) => {
+  const now = Date.now();
+  if (now - lastDbHealthTime > 2500) {
+    try {
+      const dbPing = await pingDatabaseHealth();
+      cachedDbLatencyMs = dbPing.latencyMs;
+      cachedDbStatus = 'connected';
+      lastDbHealthTime = now;
+    } catch {
+      cachedDbStatus = 'disconnected';
+    }
   }
 
   const mem = process.memoryUsage();
-  const isHealthy = dbStatus === 'connected';
+  const isHealthy = cachedDbStatus === 'connected';
 
   res.status(isHealthy ? 200 : 503).json({
     status: isHealthy ? 'healthy' : 'degraded',
@@ -89,8 +95,8 @@ app.get('/api/health', async (_req: Request, res: Response) => {
     timestamp: new Date().toISOString(),
     uptimeSeconds: Math.floor(process.uptime()),
     database: {
-      status: dbStatus,
-      latencyMs: dbLatencyMs
+      status: cachedDbStatus,
+      latencyMs: cachedDbLatencyMs
     },
     memory: {
       rssMb: Math.round((mem.rss / 1024 / 1024) * 100) / 100,

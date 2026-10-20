@@ -1,6 +1,9 @@
 import request from 'supertest';
 import { app } from '../src/server';
 import { generateTOTP } from '../src/utils/totp';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 describe('Multi-Factor Authentication (MFA / TOTP) Enterprise Suite', () => {
   const testUser = {
@@ -14,6 +17,9 @@ describe('Multi-Factor Authentication (MFA / TOTP) Enterprise Suite', () => {
   let backupCodes: string[];
 
   beforeAll(async () => {
+    // 0. Clean up existing test user if present from earlier aborted runs
+    await prisma.user.deleteMany({ where: { email: testUser.email } });
+
     // 1. Register test user
     await request(app)
       .post('/api/auth/register')
@@ -267,6 +273,14 @@ describe('Multi-Factor Authentication (MFA / TOTP) Enterprise Suite', () => {
     expect(loginChallengeRes.body.mfaRequired).toBe(true);
     expect(loginChallengeRes.body.mfaChallengeToken).toBeDefined();
     expect(loginChallengeRes.body.token).toBeUndefined();
+
+    // Clean up created user
+    await prisma.user.deleteMany({ where: { email: newUser.email } });
+  });
+
+  afterAll(async () => {
+    await prisma.user.deleteMany({ where: { email: testUser.email } });
+    await prisma.$disconnect();
   });
 });
 

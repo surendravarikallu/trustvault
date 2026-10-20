@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { Role } from '../dal/types';
 import { config } from '../config';
 import { getUserById } from '../dal/userDal';
+import { getCachedUserSession, setCachedUserSession } from '../utils/sessionCache';
 
 export interface AuthenticatedUser {
   id: string;
@@ -43,8 +44,23 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
       return;
     }
 
-    // Re-verify against database state on every request
-    const user = await getUserById(decoded.userId);
+    // Re-verify against database state with micro-cache acceleration
+    let user = getCachedUserSession(decoded.userId);
+    if (!user) {
+      const dbUser = await getUserById(decoded.userId);
+      if (dbUser) {
+        setCachedUserSession(dbUser);
+        user = {
+          id: dbUser.id,
+          email: dbUser.email,
+          name: dbUser.name,
+          role: dbUser.role,
+          tokenVersion: dbUser.tokenVersion,
+          isActive: dbUser.isActive,
+          cachedAt: Date.now()
+        };
+      }
+    }
 
     if (!user || !user.isActive) {
       res.status(401).json({ error: 'User account is inactive or does not exist.' });
