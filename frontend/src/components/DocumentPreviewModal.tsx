@@ -286,16 +286,18 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
               </div>
             )}
 
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={handleOpenNewTab}
-              title="Open stream in a dedicated browser tab"
-              style={{ display: 'flex', alignItems: 'center', gap: '5px' }}
-            >
-              <ExternalLink size={12} />
-              <span>Open Tab</span>
-            </button>
+            {canDownload && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={handleOpenNewTab}
+                title="Open stream in a dedicated browser tab"
+                style={{ display: 'flex', alignItems: 'center', gap: '5px' }}
+              >
+                <ExternalLink size={12} />
+                <span>Open Tab</span>
+              </button>
+            )}
 
             {canDownload ? (
               <button

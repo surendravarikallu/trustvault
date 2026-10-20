@@ -62,6 +62,7 @@ export const App: React.FC = () => {
   const handleLoginSuccess = (newToken: string, newUser: User) => {
     setToken(newToken);
     setUser(newUser);
+    setActiveTab('documents');
     localStorage.setItem('tv_token', newToken);
     localStorage.setItem('tv_user', JSON.stringify(newUser));
     showToast('success', `Signed in as ${newUser.name} (${newUser.role})`);
@@ -70,6 +71,7 @@ export const App: React.FC = () => {
   const handleLogout = () => {
     setToken(null);
     setUser(null);
+    setActiveTab('documents');
     localStorage.removeItem('tv_token');
     localStorage.removeItem('tv_user');
     showToast('success', 'Logged out. Active session invalidated.');
@@ -369,6 +371,7 @@ export const App: React.FC = () => {
         isOpen={!!permissionsDoc}
         onClose={() => setPermissionsDoc(null)}
         token={token}
+        onPermissionsUpdated={() => loadDocuments()}
       />
 
       {/* MFA Setup & Management Modal */}

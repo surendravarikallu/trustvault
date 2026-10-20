@@ -554,9 +554,9 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                         >
                           <FileText size={15} />
                         </div>
-                        <div>
+                        <div style={{ minWidth: 0, maxWidth: '280px' }}>
                           <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span>{doc.title}</span>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={doc.title}>{doc.title}</span>
                             {isBurnOnDownload && (
                               <span
                                 className="category-pill"
@@ -567,7 +567,8 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                                   borderColor: 'var(--color-rose-border)',
                                   color: '#fca5a5',
                                   background: 'var(--color-rose-subtle)',
-                                  fontSize: '10px'
+                                  fontSize: '10px',
+                                  flexShrink: 0
                                 }}
                                 title="Single-use transfer: Access grant closes immediately upon successful download"
                               >
@@ -585,7 +586,8 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                                   borderColor: 'var(--color-indigo-border)',
                                   color: '#c7d2fe',
                                   background: 'var(--color-indigo-subtle)',
-                                  fontSize: '10px'
+                                  fontSize: '10px',
+                                  flexShrink: 0
                                 }}
                                 title="Restricted to in-browser viewing only; raw binary download blocked"
                               >
@@ -594,7 +596,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                               </span>
                             )}
                           </div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>
+                          <div style={{ fontSize: '11px', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={doc.originalFilename}>
                             {doc.originalFilename}
                           </div>
                         </div>
@@ -741,7 +743,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                             title="Manage Access Delegation & Policy Recommender"
                           >
                             <Users size={12} />
-                            <span>Access Control</span>
+                            <span>Share</span>
                           </button>
                         )}
 

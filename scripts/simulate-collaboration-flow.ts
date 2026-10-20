@@ -13,6 +13,7 @@
  * 9. Eve logs in: verifies 0 documents visible; probing document returns 404 Not Found.
  * 10. Admin logs in and inspects the HMAC audit chain capturing all events.
  */
+export {};
 
 const BASE_URL = process.env.TARGET_URL || 'http://127.0.0.1:7777';
 

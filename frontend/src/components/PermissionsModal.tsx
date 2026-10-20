@@ -13,13 +13,15 @@ interface PermissionsModalProps {
   isOpen: boolean;
   onClose: () => void;
   token: string;
+  onPermissionsUpdated?: () => void;
 }
 
 export const PermissionsModal: React.FC<PermissionsModalProps> = ({
   document,
   isOpen,
   onClose,
-  token
+  token,
+  onPermissionsUpdated
 }) => {
   const [grantees, setGrantees] = useState<DocumentPermission[]>([]);
   const [targetEmail, setTargetEmail] = useState('');
@@ -74,6 +76,7 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
       setBurnOnDownload(false);
       setPreviewOnly(false);
       await loadGrantees();
+      onPermissionsUpdated?.();
     } catch (err: any) {
       setError(err.message);
     }
@@ -87,6 +90,7 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
       await revokePermission(document.id, userId, token);
       setSuccessMsg(`Revoked access for ${email} immediately.`);
       await loadGrantees();
+      onPermissionsUpdated?.();
     } catch (err: any) {
       setError(err.message);
     }
@@ -143,7 +147,7 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
             }}
           >
             <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '2px' }}>
-              Document Owner: {document.owner.name} ({document.owner.email})
+              Document Owner: {document.owner?.name || 'Authorized Owner'} ({document.owner?.email || ''})
             </div>
             <span>Enforced Rule (L-03): Only the document owner can grant or revoke permissions. Editors cannot elevate other users.</span>
           </div>
