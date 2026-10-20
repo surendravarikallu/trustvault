@@ -9,6 +9,7 @@ import { AuditLedgerView } from './components/AuditLedgerView';
 import { UserDirectoryView } from './components/UserDirectoryView';
 import { LoginView } from './components/LoginView';
 import { MfaModal } from './components/MfaModal';
+import { DocumentPreviewModal } from './components/DocumentPreviewModal';
 import { fetchDocuments, downloadDocument, fetchDocumentBlobUrl, deleteDocument, apiLogin } from './api';
 
 type Tab = 'documents' | 'audit' | 'users';
@@ -27,6 +28,12 @@ export const App: React.FC = () => {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [permissionsDoc, setPermissionsDoc] = useState<VaultDocument | null>(null);
   const [isMfaOpen, setIsMfaOpen] = useState(false);
+  const [previewState, setPreviewState] = useState<{
+    doc: VaultDocument;
+    blobUrl: string;
+    mimeType: string;
+    canDownload: boolean;
+  } | null>(null);
 
   // 2FA Prompt Banner state
   const [mfaBannerDismissed, setMfaBannerDismissed] = useState<boolean>(() => {
@@ -136,9 +143,19 @@ export const App: React.FC = () => {
     if (!token) return;
     showToast('success', `Decrypting in-browser stream for ${doc.title}...`);
     try {
-      const blobUrl = await fetchDocumentBlobUrl(doc.id, token, true);
-      window.open(blobUrl, '_blank');
-      showToast('success', 'In-browser stream opened.');
+      const { blobUrl, mimeType } = await fetchDocumentBlobUrl(doc.id, token, true);
+      const isOwner = doc.owner?.id === user?.id || doc.ownerId === user?.id;
+      const myGrant = Array.isArray(doc.permissions) && doc.permissions.length > 0 ? doc.permissions[0] : null;
+      const isPreviewOnly = !isOwner && !!myGrant?.previewOnly;
+      const canDownload = (isOwner || !!myGrant) && !isPreviewOnly && user?.role !== 'ADMIN';
+
+      setPreviewState({
+        doc,
+        blobUrl,
+        mimeType,
+        canDownload
+      });
+      showToast('success', `In-browser preview ready for ${doc.originalFilename}.`);
     } catch (err: any) {
       showToast('error', `Preview Refused: ${err.message}`);
     }
@@ -301,6 +318,21 @@ export const App: React.FC = () => {
         }}
         token={token}
       />
+
+      {/* Document In-App Preview Modal */}
+      {previewState && (
+        <DocumentPreviewModal
+          document={previewState.doc}
+          blobUrl={previewState.blobUrl}
+          mimeType={previewState.mimeType}
+          canDownload={previewState.canDownload}
+          onClose={() => setPreviewState(null)}
+          onDownload={() => {
+            handleDownload(previewState.doc);
+            setPreviewState(null);
+          }}
+        />
+      )}
 
       {/* Permissions Modal */}
       <PermissionsModal

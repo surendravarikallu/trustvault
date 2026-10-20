@@ -178,7 +178,21 @@ export async function downloadDocument(req: AuthenticatedRequest, res: Response)
 
     // Safe streaming headers with RFC 5987 Content-Disposition
     const encodedFilename = encodeURIComponent(document.originalFilename).replace(/['()]/g, escape);
-    res.setHeader('Content-Type', isPreview ? (document.mimeType || 'application/octet-stream') : 'application/octet-stream');
+    let effectiveMime = document.mimeType || 'application/octet-stream';
+    const lowerFilename = document.originalFilename.toLowerCase();
+    if (lowerFilename.endsWith('.pdf')) {
+      effectiveMime = 'application/pdf';
+    } else if (lowerFilename.endsWith('.txt')) {
+      effectiveMime = 'text/plain';
+    } else if (lowerFilename.endsWith('.json')) {
+      effectiveMime = 'application/json';
+    } else if (lowerFilename.endsWith('.png')) {
+      effectiveMime = 'image/png';
+    } else if (lowerFilename.endsWith('.jpg') || lowerFilename.endsWith('.jpeg')) {
+      effectiveMime = 'image/jpeg';
+    }
+
+    res.setHeader('Content-Type', isPreview ? effectiveMime : 'application/octet-stream');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     const dispositionType = isPreview ? 'inline' : 'attachment';
     res.setHeader(

@@ -199,7 +199,11 @@ export async function downloadDocument(id: string, originalFilename: string, tok
   window.URL.revokeObjectURL(blobUrl);
 }
 
-export async function fetchDocumentBlobUrl(id: string, token: string, preview = false): Promise<string> {
+export async function fetchDocumentBlobUrl(
+  id: string,
+  token: string,
+  preview = false
+): Promise<{ blobUrl: string; mimeType: string }> {
   const url = preview ? `/api/documents/${id}/download?preview=true` : `/api/documents/${id}/download`;
   const res = await fetch(url, {
     headers: getAuthHeader(token)
@@ -210,8 +214,14 @@ export async function fetchDocumentBlobUrl(id: string, token: string, preview = 
     throw new Error(err.error || `Request failed with HTTP ${res.status}`);
   }
 
-  const blob = await res.blob();
-  return window.URL.createObjectURL(blob);
+  const rawContentType = res.headers.get('content-type') || 'application/pdf';
+  // Strip any charset or directives from content-type header
+  const mimeType = rawContentType.split(';')[0].trim();
+  const rawBlob = await res.blob();
+  const typedBlob = new Blob([rawBlob], { type: mimeType });
+  const blobUrl = window.URL.createObjectURL(typedBlob);
+
+  return { blobUrl, mimeType };
 }
 
 export async function deleteDocument(id: string, token: string): Promise<void> {

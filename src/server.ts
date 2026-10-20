@@ -20,7 +20,26 @@ app.set('trust proxy', 1);
 app.set('query parser', 'simple');
 
 // 3. Security headers & CORS
-app.use(helmet());
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        baseUri: ["'self'"],
+        fontSrc: ["'self'", 'https:', 'data:'],
+        formAction: ["'self'"],
+        frameAncestors: ["'self'"],
+        imgSrc: ["'self'", 'data:', 'blob:'],
+        objectSrc: ["'self'", 'blob:'],
+        frameSrc: ["'self'", 'blob:'],
+        scriptSrc: ["'self'"],
+        scriptSrcAttr: ["'none'"],
+        styleSrc: ["'self'", 'https:', "'unsafe-inline'"],
+        upgradeInsecureRequests: []
+      }
+    }
+  })
+);
 app.use(cors({ origin: true, credentials: true }));
 
 // 4. Global IP rate limiter: 100 requests per minute
