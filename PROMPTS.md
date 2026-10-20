@@ -458,7 +458,7 @@
   - Formally modeled and documented threats `T-45` (Identity Provisioning & Role Elevation on Account Creation), `T-46` (Stale Session Persistence After Administrative Password Reset), and `T-47` (Authenticator Lockout & Emergency Administrative 2FA Reset) in `THREATS.md`.
   - Added Section 6 to `THREATS.md` with an exhaustive **Threat Traceability & Verification Summary Matrix** mapping all 47 modeled threats across the 9 test suites (57 tests) and 35 user simulation scenarios.
   - Synchronized all test and threat counts across `README.md`, `THREATS.md`, and `PROMPTS.md`.
-* **Commit:** [`master` - Threat Matrix Completion (T-45 to T-47) & Traceability Audit](https://github.com/surendravarikallu/trustvault)
+* **Commit:** [`6512b8c` - Threat Matrix Completion (T-45 to T-47) & Traceability Audit](https://github.com/surendravarikallu/trustvault/commit/6512b8c)
 
 
 
