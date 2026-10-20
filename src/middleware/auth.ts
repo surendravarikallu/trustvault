@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { Role } from '../dal/types';
 import { config } from '../config';
 import { getUserById } from '../dal/userDal';
-import { getCachedUserSession, setCachedUserSession } from '../utils/sessionCache';
+import { getCachedUserSessionAsync, setCachedUserSession } from '../utils/sessionCache';
 
 export interface AuthenticatedUser {
   id: string;
@@ -24,17 +24,26 @@ interface JwtPayload {
 
 /**
  * Authentication Middleware.
+ * Supports dual-channel: HttpOnly Cookies and Authorization: Bearer.
  * Defense against Loophole L-01: Privilege Demotion Lag & Token Replay.
  */
 export async function authenticate(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
-  const authHeader = req.headers.authorization;
+  let token: string | undefined;
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    res.status(401).json({ error: 'Authentication required. Missing Bearer token.' });
-    return;
+  // 1. Check secure HttpOnly cookie first
+  if (req.cookies) {
+    token = req.cookies['__Host-trustvault_token'] || req.cookies['trustvault_token'];
   }
 
-  const token = authHeader.split(' ')[1];
+  // 2. Fall back to Authorization: Bearer header for API scripts & testing
+  if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+    token = req.headers.authorization.split(' ')[1];
+  }
+
+  if (!token) {
+    res.status(401).json({ error: 'Authentication required. Missing Bearer token or session cookie.' });
+    return;
+  }
 
   try {
     const decoded = jwt.verify(token, config.jwtSecret, { algorithms: ['HS256'] }) as JwtPayload;
@@ -44,8 +53,8 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
       return;
     }
 
-    // Re-verify against database state with micro-cache acceleration
-    let user = getCachedUserSession(decoded.userId);
+    // Re-verify against database state with Redis-backed micro-cache acceleration
+    let user = await getCachedUserSessionAsync(decoded.userId);
     if (!user) {
       const dbUser = await getUserById(decoded.userId);
       if (dbUser) {

@@ -24,6 +24,10 @@ export interface ActiveGrantContext {
   burnOnDownload?: boolean;
   previewOnly?: boolean;
   downloadCount?: number;
+  maxDownloads?: number;
+  pdfProtected?: boolean;
+  otpHash?: string | null;
+  watermarkText?: string | null;
   grantedById: string;
   grantedAt: Date;
 }

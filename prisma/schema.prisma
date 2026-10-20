@@ -97,7 +97,11 @@ model DocumentPermission {
   expiresAt       DateTime?
   burnOnDownload  Boolean         @default(false)
   downloadCount   Int             @default(0)
+  maxDownloads    Int             @default(0)
   previewOnly     Boolean         @default(false)
+  pdfProtected    Boolean         @default(false)
+  otpHash         String?
+  watermarkText   String?
   grantedById     String
   grantedBy       User            @relation("GrantedBy", fields: [grantedById], references: [id], onDelete: Restrict)
   grantedAt       DateTime        @default(now())

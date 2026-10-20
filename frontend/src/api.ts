@@ -178,10 +178,25 @@ export async function uploadDocument(formData: FormData, token: string): Promise
  * In-Memory Blob Downloader.
  * Defense against Loophole L-02: Zero token exposure in query strings.
  */
-export async function downloadDocument(id: string, originalFilename: string, token: string): Promise<void> {
-  const res = await fetch(`/api/documents/${id}/download`, {
-    headers: getAuthHeader(token)
-  });
+export async function downloadDocument(id: string, originalFilename: string, token: string, otp?: string): Promise<void> {
+  const headers: Record<string, string> = { ...getAuthHeader(token) };
+  if (otp) {
+    headers['x-pdf-otp'] = otp;
+  }
+
+  const res = await fetch(`/api/documents/${id}/download`, { headers });
+
+  if (res.status === 401) {
+    const err = await res.json().catch(() => ({}));
+    if (err.pdfProtected && !otp) {
+      const userOtp = window.prompt('🔒 This PDF is protected by an access policy.\nPlease enter the One-Time Password (OTP) to download and decrypt:');
+      if (userOtp && userOtp.trim()) {
+        return downloadDocument(id, originalFilename, token, userOtp.trim());
+      }
+      return;
+    }
+    throw new Error(err.error || 'Authentication required.');
+  }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Download failed' }));
@@ -298,8 +313,15 @@ export async function grantPermission(
   permissionLevel: PermissionLevel,
   expiresAt: string | null,
   token: string,
-  options?: { burnOnDownload?: boolean; previewOnly?: boolean }
-): Promise<void> {
+  options?: {
+    burnOnDownload?: boolean;
+    previewOnly?: boolean;
+    maxDownloads?: number;
+    pdfProtected?: boolean;
+    otp?: string;
+    watermarkText?: string;
+  }
+): Promise<{ otp?: string }> {
   const res = await fetch(`/api/documents/${docId}/permissions`, {
     method: 'POST',
     headers: {
@@ -311,7 +333,11 @@ export async function grantPermission(
       permissionLevel,
       expiresAt,
       burnOnDownload: options?.burnOnDownload ?? false,
-      previewOnly: options?.previewOnly ?? false
+      previewOnly: options?.previewOnly ?? false,
+      maxDownloads: options?.maxDownloads ?? (options?.burnOnDownload ? 1 : 0),
+      pdfProtected: options?.pdfProtected ?? false,
+      otp: options?.otp,
+      watermarkText: options?.watermarkText
     })
   });
 
@@ -319,6 +345,7 @@ export async function grantPermission(
   if (!res.ok) {
     throw new Error(data.error || 'Failed to grant permission.');
   }
+  return { otp: data.otp };
 }
 
 export async function revokePermission(docId: string, targetUserId: string, token: string): Promise<void> {

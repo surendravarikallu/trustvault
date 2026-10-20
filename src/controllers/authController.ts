@@ -17,6 +17,7 @@ import {
 import QRCode from 'qrcode';
 import { generateBase32Secret, generateTotpUri } from '../utils/totp';
 import { encryptMfaSecret } from '../utils/mfaCrypto';
+import { setAuthCookies, clearAuthCookies } from '../utils/authCookies';
 
 // Dummy hash generated with bcrypt 12 rounds for timing attack neutralization (L-08)
 const DUMMY_BCRYPT_HASH = '$2b$12$e80yqV0rYyXq4r.15G8aTuOsqaVq6Vw5lZlOfeFm8Q1Vn6eYdKkhe';
@@ -67,6 +68,8 @@ export async function register(req: Request, res: Response): Promise<void> {
     config.jwtSecret,
     { algorithm: 'HS256', expiresIn: '8h' }
   );
+
+  setAuthCookies(res, token);
 
   res.status(201).json({
     message: 'User registered successfully as VIEWER.',
@@ -151,6 +154,8 @@ export async function login(req: Request, res: Response): Promise<void> {
     { algorithm: 'HS256', expiresIn: '8h' }
   );
 
+  setAuthCookies(res, token);
+
   res.json({
     token,
     user: {
@@ -171,6 +176,7 @@ export async function logout(req: AuthenticatedRequest, res: Response): Promise<
 
   // Instant Revocation: Increment token version to kill all current user sessions (L-01)
   await incrementTokenVersion(req.user.id);
+  clearAuthCookies(res);
   res.json({ message: 'Logged out successfully. All active sessions invalidated.' });
 }
 

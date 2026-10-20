@@ -12,6 +12,9 @@ import {
 import { getUserByEmail, getUserById, getEligibleReviewers } from '../dal/userDal';
 import { logAuditEvent } from '../dal/auditDal';
 
+import { generatePdfOtp } from '../utils/pdfEngine';
+import bcrypt from 'bcrypt';
+
 const GrantPermissionSchema = z.object({
   targetEmail: z.string().email().optional(),
   userEmail: z.string().email().optional(),
@@ -19,7 +22,11 @@ const GrantPermissionSchema = z.object({
   permissionLevel: z.nativeEnum(PermissionLevel),
   expiresAt: z.string().optional().nullable(),
   burnOnDownload: z.boolean().optional(),
-  previewOnly: z.boolean().optional()
+  maxDownloads: z.number().int().min(1).max(100).optional(),
+  previewOnly: z.boolean().optional(),
+  pdfProtected: z.boolean().optional(),
+  otp: z.string().optional(),
+  watermarkText: z.string().max(200).optional()
 }).refine(data => Boolean(data.targetEmail || data.userEmail || data.userId), {
   message: 'Target user email or ID is required.'
 });
@@ -34,7 +41,19 @@ export async function grantPermission(req: AuthenticatedRequest, res: Response):
     return;
   }
 
-  const { targetEmail, userEmail, userId, permissionLevel, expiresAt, burnOnDownload, previewOnly } = parseResult.data;
+  const {
+    targetEmail,
+    userEmail,
+    userId,
+    permissionLevel,
+    expiresAt,
+    burnOnDownload,
+    maxDownloads,
+    previewOnly,
+    pdfProtected,
+    otp,
+    watermarkText
+  } = parseResult.data;
 
   try {
     // 1. Authorization check: Owner-only authority (L-03)
@@ -55,6 +74,14 @@ export async function grantPermission(req: AuthenticatedRequest, res: Response):
       return;
     }
 
+    let generatedOtp: string | undefined = undefined;
+    let otpHash: string | null = null;
+    if (pdfProtected) {
+      generatedOtp = otp && otp.trim() ? otp.trim() : generatePdfOtp();
+      otpHash = await bcrypt.hash(generatedOtp, 10);
+    }
+
+    const effectiveMaxDownloads = maxDownloads ? maxDownloads : (burnOnDownload ? 1 : 0);
     const expirationDate = expiresAt ? new Date(expiresAt) : null;
     const grant = await grantDocumentPermission(
       id,
@@ -63,12 +90,20 @@ export async function grantPermission(req: AuthenticatedRequest, res: Response):
       expirationDate,
       user,
       getRequestContext(req),
-      { burnOnDownload, previewOnly }
+      {
+        burnOnDownload: burnOnDownload ?? false,
+        maxDownloads: effectiveMaxDownloads,
+        previewOnly,
+        pdfProtected,
+        otpHash,
+        watermarkText
+      }
     );
 
     res.status(201).json({
       message: `Granted ${permissionLevel} permission to ${targetUser.email}.`,
-      permission: grant
+      permission: grant,
+      ...(generatedOtp ? { otp: generatedOtp } : {})
     });
   } catch (error: any) {
     if (error instanceof NotFoundError) {

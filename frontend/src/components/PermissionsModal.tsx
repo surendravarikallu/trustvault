@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, UserPlus, Trash2, ShieldCheck, AlertCircle, CheckCircle2, Flame, Eye } from 'lucide-react';
+import { X, UserPlus, Trash2, ShieldCheck, AlertCircle, CheckCircle2, Flame, Eye, Lock, FileKey, Copy, Check } from 'lucide-react';
 import type { VaultDocument, DocumentPermission, ReviewerSuggestion, PermissionLevel } from '../types';
 import {
   fetchDocumentPermissions,
@@ -27,8 +27,13 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
   const [targetEmail, setTargetEmail] = useState('');
   const [permissionLevel, setPermissionLevel] = useState<PermissionLevel>('READ');
   const [expiresAt, setExpiresAt] = useState('');
-  const [burnOnDownload, setBurnOnDownload] = useState(false);
+  const [downloadPolicy, setDownloadPolicy] = useState<'burn' | 'quota' | 'unlimited'>('burn');
+  const [maxDownloads, setMaxDownloads] = useState<number>(3);
   const [previewOnly, setPreviewOnly] = useState(false);
+  const [pdfProtected, setPdfProtected] = useState(true);
+  const [watermarkText, setWatermarkText] = useState('');
+  const [generatedOtp, setGeneratedOtp] = useState<string | null>(null);
+  const [copiedOtp, setCopiedOtp] = useState(false);
   const [suggestions, setSuggestions] = useState<ReviewerSuggestion[]>([]);
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,8 +45,13 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
       setSuggestions([]);
       setError(null);
       setSuccessMsg(null);
-      setBurnOnDownload(false);
+      setGeneratedOtp(null);
+      setCopiedOtp(false);
+      setDownloadPolicy('burn');
+      setMaxDownloads(3);
       setPreviewOnly(false);
+      setPdfProtected(true);
+      setWatermarkText('');
     }
   }, [isOpen, document]);
 
@@ -60,21 +70,37 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
     e.preventDefault();
     setError(null);
     setSuccessMsg(null);
+    setGeneratedOtp(null);
+    setCopiedOtp(false);
+
+    const isBurn = downloadPolicy === 'burn';
+    const quota = downloadPolicy === 'quota' ? maxDownloads : (isBurn ? 1 : 0);
 
     try {
-      await grantPermission(
+      const result = await grantPermission(
         document.id,
         targetEmail.trim(),
         permissionLevel,
         expiresAt ? new Date(expiresAt).toISOString() : null,
         token,
-        { burnOnDownload, previewOnly }
+        {
+          burnOnDownload: isBurn,
+          maxDownloads: quota,
+          previewOnly,
+          pdfProtected,
+          watermarkText: watermarkText.trim() || undefined
+        }
       );
-      setSuccessMsg(`Granted ${permissionLevel} access to ${targetEmail}.`);
+
+      if (result.otp) {
+        setGeneratedOtp(result.otp);
+        setSuccessMsg(`Granted ${permissionLevel} access to ${targetEmail}. An emergency One-Time Password (OTP) was generated for this PDF.`);
+      } else {
+        setSuccessMsg(`Granted ${permissionLevel} access to ${targetEmail}.`);
+      }
+
       setTargetEmail('');
       setExpiresAt('');
-      setBurnOnDownload(false);
-      setPreviewOnly(false);
       await loadGrantees();
       onPermissionsUpdated?.();
     } catch (err: any) {
@@ -303,45 +329,155 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
               </button>
             </div>
 
-            {/* Advanced Ephemeral Sharing Controls */}
+            {/* Generated OTP Display Banner */}
+            {generatedOtp && (
+              <div
+                style={{
+                  background: 'rgba(16, 185, 129, 0.12)',
+                  border: '1px solid rgba(16, 185, 129, 0.35)',
+                  borderRadius: 'var(--radius-xs)',
+                  padding: '12px 14px',
+                  marginTop: '12px',
+                  marginBottom: '6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between'
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: '11px', fontWeight: 600, color: '#34d399', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <FileKey size={14} /> PDF ENCRYPTED WITH ONE-TIME PASSWORD (OTP)
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                    Send this emergency password to the recipient. Acrobat & Chrome will require it to open:
+                  </div>
+                  <div style={{ marginTop: '4px', fontSize: '16px', fontWeight: 700, letterSpacing: '0.12em', fontFamily: 'monospace', color: '#10b981' }}>
+                    {generatedOtp}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-xs"
+                  onClick={() => {
+                    navigator.clipboard.writeText(generatedOtp);
+                    setCopiedOtp(true);
+                    setTimeout(() => setCopiedOtp(false), 2000);
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '5px' }}
+                >
+                  {copiedOtp ? <Check size={13} color="#10b981" /> : <Copy size={13} />}
+                  <span>{copiedOtp ? 'Copied!' : 'Copy OTP'}</span>
+                </button>
+              </div>
+            )}
+
+            {/* Zero-Trust Download & Content Protection Policies */}
             <div
               style={{
                 display: 'flex',
-                flexWrap: 'wrap',
-                gap: '16px',
+                flexDirection: 'column',
+                gap: '8px',
                 marginTop: '10px',
-                padding: '8px 12px',
+                padding: '10px 12px',
                 background: 'var(--bg-surface)',
                 borderRadius: 'var(--radius-xs)',
                 border: '1px solid var(--border-subtle)',
                 fontSize: '11px'
               }}
             >
-              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: 'var(--text-secondary)' }}>
-                <input
-                  type="checkbox"
-                  checked={burnOnDownload}
-                  onChange={(e) => setBurnOnDownload(e.target.checked)}
-                  style={{ accentColor: 'var(--color-rose)' }}
-                />
-                <Flame size={12} color="var(--color-rose)" />
-                <span style={{ fontWeight: 500, color: burnOnDownload ? '#fca5a5' : 'inherit' }}>
-                  Burn-on-Download (Revokes grant immediately upon successful download completion)
-                </span>
-              </label>
+              <div style={{ fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <ShieldCheck size={13} color="#93c5fd" />
+                <span>Download Quota & PDF Protection Policies</span>
+              </div>
 
-              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+              {/* Download Quotas */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px', alignItems: 'center' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="downloadPolicy"
+                    checked={downloadPolicy === 'burn'}
+                    onChange={() => setDownloadPolicy('burn')}
+                    style={{ accentColor: 'var(--color-rose)' }}
+                  />
+                  <Flame size={12} color="var(--color-rose)" />
+                  <span style={{ fontWeight: 500, color: downloadPolicy === 'burn' ? '#fca5a5' : 'inherit' }}>
+                    Single-Use Burn-on-Download
+                  </span>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="downloadPolicy"
+                    checked={downloadPolicy === 'quota'}
+                    onChange={() => setDownloadPolicy('quota')}
+                    style={{ accentColor: '#fbbf24' }}
+                  />
+                  <span style={{ fontWeight: 500, color: downloadPolicy === 'quota' ? '#fde68a' : 'inherit' }}>
+                    Bounded Quota:
+                  </span>
+                  <input
+                    type="number"
+                    min={2}
+                    max={20}
+                    value={maxDownloads}
+                    disabled={downloadPolicy !== 'quota'}
+                    onChange={(e) => setMaxDownloads(parseInt(e.target.value, 10) || 2)}
+                    style={{ width: '42px', padding: '2px 4px', fontSize: '11px', textAlign: 'center' }}
+                  />
+                  <span style={{ color: 'var(--text-dim)' }}>downloads</span>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="downloadPolicy"
+                    checked={downloadPolicy === 'unlimited'}
+                    onChange={() => setDownloadPolicy('unlimited')}
+                  />
+                  <span style={{ color: 'var(--text-dim)' }}>Unlimited</span>
+                </label>
+              </div>
+
+              {/* PDF Protection & Watermark */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', borderTop: '1px solid var(--border-subtle)', paddingTop: '8px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={pdfProtected}
+                    onChange={(e) => setPdfProtected(e.target.checked)}
+                    style={{ accentColor: '#10b981' }}
+                  />
+                  <Lock size={12} color="#10b981" />
+                  <span style={{ fontWeight: 500, color: pdfProtected ? '#6ee7b7' : 'inherit' }}>
+                    Require One-Time Password (OTP) to open PDF
+                  </span>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={previewOnly}
+                    onChange={(e) => setPreviewOnly(e.target.checked)}
+                    style={{ accentColor: 'var(--color-indigo)' }}
+                  />
+                  <Eye size={12} color="var(--color-indigo)" />
+                  <span style={{ fontWeight: 500, color: previewOnly ? '#c7d2fe' : 'inherit' }}>
+                    In-Browser Preview Only (Block Raw Binary)
+                  </span>
+                </label>
+              </div>
+
+              <div>
                 <input
-                  type="checkbox"
-                  checked={previewOnly}
-                  onChange={(e) => setPreviewOnly(e.target.checked)}
-                  style={{ accentColor: 'var(--color-indigo)' }}
+                  type="text"
+                  placeholder="Custom Watermark Overlay (Default: CONFIDENTIAL • Recipient Email + IP + Timestamp)"
+                  value={watermarkText}
+                  onChange={(e) => setWatermarkText(e.target.value)}
+                  style={{ width: '100%', fontSize: '11px', padding: '4px 8px' }}
                 />
-                <Eye size={12} color="var(--color-indigo)" />
-                <span style={{ fontWeight: 500, color: previewOnly ? '#c7d2fe' : 'inherit' }}>
-                  In-Browser Preview Only (Prevents raw binary file downloads)
-                </span>
-              </label>
+              </div>
             </div>
           </form>
 

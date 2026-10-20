@@ -26,6 +26,7 @@ import {
   generateTotpUri,
   verifyTOTP
 } from '../utils/totp';
+import { setAuthCookies } from '../utils/authCookies';
 import { logAuditEvent } from '../services/auditService';
 import { AuditStatus } from '../dal/types';
 
@@ -255,6 +256,8 @@ export async function verifyLoginMFA(req: Request, res: Response): Promise<void>
     { algorithm: 'HS256', expiresIn: '8h' }
   );
 
+  setAuthCookies(res, token);
+
   res.json({
     token,
     user: {
@@ -368,6 +371,8 @@ export async function confirmEnrollMFA(req: Request, res: Response): Promise<voi
     config.jwtSecret,
     { algorithm: 'HS256', expiresIn: '8h' }
   );
+
+  setAuthCookies(res, token);
 
   await logAuditEvent({
     action: 'MFA_ENROLLED_AND_CONFIRMED',

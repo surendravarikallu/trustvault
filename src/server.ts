@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import helmet from 'helmet';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import { config } from './config';
 import { authRouter } from './routes/authRoutes';
@@ -52,6 +53,7 @@ app.use(
   })
 );
 app.use(cors({ origin: true, credentials: true }));
+app.use(cookieParser());
 
 // 4. Global IP rate limiter: Configurable threshold, bypasses internal health probes
 const globalLimiter = rateLimit({

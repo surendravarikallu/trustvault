@@ -17,7 +17,9 @@ import {
   ForbiddenError,
   RequestContext
 } from '../dal/documentDal';
-import { burnDocumentPermission } from '../dal/permissionDal';
+import { recordDownloadAndEnforceQuota, burnDocumentPermission } from '../dal/permissionDal';
+import { applyForensicWatermark, protectPdfWithPassword } from '../utils/pdfEngine';
+import bcrypt from 'bcrypt';
 
 export function getRequestContext(req: AuthenticatedRequest): RequestContext {
   const ip = (req.headers['cf-connecting-ip'] as string) || req.ip || req.socket.remoteAddress || '127.0.0.1';
@@ -177,6 +179,33 @@ export async function downloadDocument(req: AuthenticatedRequest, res: Response)
       return;
     }
 
+    // Enforcement: Download Quota Check
+    if (activeGrant && activeGrant.downloadCount !== undefined && typeof activeGrant.maxDownloads === 'number' && activeGrant.maxDownloads > 0 && activeGrant.downloadCount >= activeGrant.maxDownloads) {
+      res.status(404).json({ error: 'Document not found.' });
+      return;
+    }
+
+    // Enforcement: PDF Password / One-Time Password (OTP) verification
+    const otpProvided = (req.headers['x-pdf-otp'] as string) || (req.query.otp as string);
+    if (activeGrant?.pdfProtected && activeGrant.otpHash && !isPreview) {
+      if (!otpProvided) {
+        res.status(401).json({
+          pdfProtected: true,
+          error: 'This PDF is password-protected. Please provide the OTP via header x-pdf-otp or query parameter otp.'
+        });
+        return;
+      }
+
+      const isOtpValid = await bcrypt.compare(otpProvided.trim(), activeGrant.otpHash);
+      if (!isOtpValid) {
+        res.status(401).json({
+          pdfProtected: true,
+          error: 'Invalid OTP password provided for this protected PDF.'
+        });
+        return;
+      }
+    }
+
     // Safe streaming headers with RFC 5987 Content-Disposition
     const encodedFilename = encodeURIComponent(document.originalFilename).replace(/['()]/g, escape);
     let effectiveMime = document.mimeType || 'application/octet-stream';
@@ -201,14 +230,57 @@ export async function downloadDocument(req: AuthenticatedRequest, res: Response)
       `${dispositionType}; filename="${document.originalFilename.replace(/"/g, '')}"; filename*=UTF-8''${encodedFilename}`
     );
 
-    // Enforcement: Burn-on-Download (One-Time Secure Transfer)
-    // If the grant is marked burnOnDownload, automatically revoke access as soon as download completes
-    if (activeGrant?.burnOnDownload && !isPreview) {
+    // Dynamic Delivery for PDFs: Forensic Watermarking and Password Encryption
+    if (lowerFilename.endsWith('.pdf') && (activeGrant || !isPreview)) {
+      let fileBuffer = await StorageService.readDecryptedFile(filePath);
+
+      // Apply dynamic forensic watermark for grantee or if customized
+      const isGrantee = !!activeGrant && document.ownerId !== user.id;
+      if (isGrantee || activeGrant?.watermarkText) {
+        try {
+          fileBuffer = await applyForensicWatermark(fileBuffer, {
+            recipientEmail: user.email,
+            ipAddress: req.ip,
+            customText: activeGrant?.watermarkText || undefined,
+            grantId: activeGrant?.id
+          });
+        } catch (wmErr) {
+          console.error('Failed to apply watermark, serving original:', wmErr);
+        }
+      }
+
+      // Apply user open password protection if pdfProtected is true
+      if (activeGrant?.pdfProtected && otpProvided) {
+        try {
+          fileBuffer = await protectPdfWithPassword(fileBuffer, otpProvided.trim());
+        } catch (encErr) {
+          console.error('Failed to apply PDF password encryption:', encErr);
+        }
+      }
+
+      // Enforcement: Bounded Multi-Download Quota / Burn-on-Download
+      if (activeGrant && !isPreview) {
+        res.on('finish', async () => {
+          try {
+            await recordDownloadAndEnforceQuota(document.id, user.id, user.email, getRequestContext(req));
+          } catch (burnErr) {
+            console.error('Failed to enforce download quota:', burnErr);
+          }
+        });
+      }
+
+      res.setHeader('Content-Length', fileBuffer.length);
+      res.end(fileBuffer);
+      return;
+    }
+
+    // Enforcement: Bounded Multi-Download Quota / Burn-on-Download for non-PDF files
+    if (activeGrant && !isPreview) {
       res.on('finish', async () => {
         try {
-          await burnDocumentPermission(document.id, user.id, user.email, getRequestContext(req));
+          await recordDownloadAndEnforceQuota(document.id, user.id, user.email, getRequestContext(req));
         } catch (burnErr) {
-          console.error('Failed to execute burn-on-download auto-revocation:', burnErr);
+          console.error('Failed to enforce download quota:', burnErr);
         }
       });
     }
