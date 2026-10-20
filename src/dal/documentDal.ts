@@ -1,9 +1,8 @@
-import { PrismaClient, Prisma, Role, PermissionLevel, AuditStatus } from '@prisma/client';
+import { Prisma, Role, PermissionLevel, AuditStatus } from '@prisma/client';
+import { prisma } from '../prisma';
 import { logAuditEvent, logAccessDenied } from '../services/auditService';
 import { StorageService } from '../services/storageService';
 import { ActiveGrantContext } from './types';
-
-const prisma = new PrismaClient();
 
 export interface UserContext {
   id: string;

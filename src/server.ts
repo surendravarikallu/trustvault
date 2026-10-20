@@ -53,12 +53,13 @@ app.use(
 );
 app.use(cors({ origin: true, credentials: true }));
 
-// 4. Global IP rate limiter: 100 requests per minute
+// 4. Global IP rate limiter: Configurable threshold, bypasses internal health probes
 const globalLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 1000,
+  max: parseInt(process.env.RATE_LIMIT_MAX || '10000', 10),
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => req.path === '/api/health' || req.path === '/api/health/',
   message: { error: 'Too many requests. Please slow down.' }
 });
 app.use(globalLimiter);

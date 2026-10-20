@@ -1,9 +1,8 @@
-import { PrismaClient, AuditStatus } from '@prisma/client';
+import { AuditStatus } from '@prisma/client';
 import crypto from 'crypto';
+import { prisma } from '../prisma';
 import { config } from '../config';
 import { exportAuditAnchor, loadAuditAnchor } from '../utils/auditAnchor';
-
-const prisma = new PrismaClient();
 
 export const AUDIT_LOCK_ID = 749281;
 export const GENESIS_PREV_HASH = '0000000000000000000000000000000000000000000000000000000000000000';

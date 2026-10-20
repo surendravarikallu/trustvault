@@ -1,6 +1,5 @@
-import { PrismaClient, Role, User as DbUser } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { Role, User as DbUser } from '@prisma/client';
+import { prisma } from '../prisma';
 
 export async function getUserById(id: string): Promise<DbUser | null> {
   return prisma.user.findUnique({

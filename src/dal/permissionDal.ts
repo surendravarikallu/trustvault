@@ -1,7 +1,6 @@
-import { PrismaClient, PermissionLevel, AuditStatus } from '@prisma/client';
+import { PermissionLevel, AuditStatus } from '@prisma/client';
+import { prisma } from '../prisma';
 import { logAuditEvent } from './auditDal';
-
-const prisma = new PrismaClient();
 
 export async function grantDocumentPermission(
   documentId: string,
