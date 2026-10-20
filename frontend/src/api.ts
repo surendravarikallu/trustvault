@@ -203,7 +203,7 @@ export async function fetchDocumentBlobUrl(
   id: string,
   token: string,
   preview = false
-): Promise<{ blobUrl: string; mimeType: string }> {
+): Promise<{ blobUrl: string; mimeType: string; arrayBuffer: ArrayBuffer }> {
   const url = preview ? `/api/documents/${id}/download?preview=true` : `/api/documents/${id}/download`;
   const res = await fetch(url, {
     headers: getAuthHeader(token)
@@ -218,10 +218,11 @@ export async function fetchDocumentBlobUrl(
   // Strip any charset or directives from content-type header
   const mimeType = rawContentType.split(';')[0].trim();
   const rawBlob = await res.blob();
+  const arrayBuffer = await rawBlob.arrayBuffer();
   const typedBlob = new Blob([rawBlob], { type: mimeType });
   const blobUrl = window.URL.createObjectURL(typedBlob);
 
-  return { blobUrl, mimeType };
+  return { blobUrl, mimeType, arrayBuffer };
 }
 
 export async function deleteDocument(id: string, token: string): Promise<void> {
