@@ -165,7 +165,7 @@ export async function deactivateUser(req: AuthenticatedRequest, res: Response): 
 
 export async function getUsers(req: AuthenticatedRequest, res: Response): Promise<void> {
   const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
-  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 50));
+  const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string, 10) || 100));
 
   try {
     const result = await listAllUsers(page, limit);

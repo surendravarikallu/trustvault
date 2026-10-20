@@ -8,7 +8,8 @@ import {
   Key,
   ShieldAlert,
   X,
-  Wand2
+  Wand2,
+  Search
 } from 'lucide-react';
 import type { User, Role } from '../types';
 import {
@@ -30,6 +31,8 @@ export const UserDirectoryView: React.FC<UserDirectoryViewProps> = ({ token, cur
   const [isLoading, setIsLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState<string>('ALL');
 
   // Create User Modal State
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -168,6 +171,14 @@ export const UserDirectoryView: React.FC<UserDirectoryViewProps> = ({ token, cur
     }
   };
 
+  const filteredUsers = users.filter((u) => {
+    const matchesSearch =
+      u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.email.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesRole = roleFilter === 'ALL' || u.role === roleFilter;
+    return matchesSearch && matchesRole;
+  });
+
   return (
     <div>
       {/* Enterprise Security Architecture Banner */}
@@ -236,23 +247,53 @@ export const UserDirectoryView: React.FC<UserDirectoryViewProps> = ({ token, cur
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          marginBottom: '12px'
+          gap: '12px',
+          marginBottom: '14px',
+          flexWrap: 'wrap'
         }}
       >
-        <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
-          Enterprise User Directory ({users.length})
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: '280px' }}>
+          <div style={{ position: 'relative', flex: 1 }}>
+            <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)' }} />
+            <input
+              type="text"
+              className="form-input"
+              placeholder="Search user by name or corporate email..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{ paddingLeft: '32px', height: '32px', fontSize: '12px', width: '100%' }}
+            />
+          </div>
+
+          <select
+            value={roleFilter}
+            onChange={(e) => setRoleFilter(e.target.value)}
+            className="form-input"
+            style={{ width: '130px', height: '32px', fontSize: '12px', padding: '0 8px' }}
+          >
+            <option value="ALL">All Roles</option>
+            <option value="ADMIN">ADMIN</option>
+            <option value="OWNER">OWNER</option>
+            <option value="VIEWER">VIEWER</option>
+          </select>
         </div>
-        <button
-          type="button"
-          className="btn btn-primary btn-sm"
-          onClick={() => {
-            setCreatePassword(generateStrongPassword());
-            setIsCreateOpen(true);
-          }}
-        >
-          <UserPlus size={13} />
-          <span>Provision New User</span>
-        </button>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ fontSize: '12px', color: 'var(--text-dim)' }}>
+            Showing <strong style={{ color: 'var(--text-primary)' }}>{filteredUsers.length}</strong> of {users.length} users
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => {
+              setCreatePassword(generateStrongPassword());
+              setIsCreateOpen(true);
+            }}
+          >
+            <UserPlus size={13} />
+            <span>Provision New User</span>
+          </button>
+        </div>
       </div>
 
       {/* User Directory Table */}
@@ -270,16 +311,23 @@ export const UserDirectoryView: React.FC<UserDirectoryViewProps> = ({ token, cur
             </tr>
           </thead>
           <tbody>
-            {users.map((u) => {
-              const isSelf = u.id === currentUser.id;
+            {filteredUsers.length === 0 ? (
+              <tr>
+                <td colSpan={7} style={{ textAlign: 'center', padding: '32px', color: 'var(--text-dim)' }}>
+                  No users found matching "{searchQuery}"
+                </td>
+              </tr>
+            ) : (
+              filteredUsers.map((u) => {
+                const isSelf = u.id === currentUser.id;
 
-              return (
-                <tr key={u.id}>
-                  <td>
-                    <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)' }}>
-                      {u.name} {isSelf && <span style={{ fontSize: '10px', color: 'var(--text-dim)' }}>(Current)</span>}
-                    </div>
-                  </td>
+                return (
+                  <tr key={u.id}>
+                    <td>
+                      <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)' }}>
+                        {u.name} {isSelf && <span style={{ fontSize: '10px', color: 'var(--text-dim)' }}>(Current)</span>}
+                      </div>
+                    </td>
 
                   <td className="mono-cell" style={{ fontSize: '11px' }}>
                     {u.email}
@@ -378,7 +426,7 @@ export const UserDirectoryView: React.FC<UserDirectoryViewProps> = ({ token, cur
                   </td>
                 </tr>
               );
-            })}
+            }))}
           </tbody>
         </table>
       </div>

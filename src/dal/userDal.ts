@@ -116,14 +116,17 @@ export async function lookupUserByExactEmail(email: string) {
   });
 }
 
-export async function listAllUsers(page = 1, limit = 50) {
+export async function listAllUsers(page = 1, limit = 100) {
   const skip = (page - 1) * limit;
   const [total, users] = await Promise.all([
     prisma.user.count(),
     prisma.user.findMany({
       skip,
       take: limit,
-      orderBy: { createdAt: 'desc' },
+      orderBy: [
+        { role: 'asc' }, // ADMIN first, then OWNER, then VIEWER
+        { createdAt: 'desc' }
+      ],
       select: {
         id: true,
         email: true,
@@ -131,6 +134,7 @@ export async function listAllUsers(page = 1, limit = 50) {
         role: true,
         isActive: true,
         tokenVersion: true,
+        mfaEnabled: true,
         mfaSecret: true,
         createdAt: true
       }
@@ -144,7 +148,7 @@ export async function listAllUsers(page = 1, limit = 50) {
     role: u.role,
     isActive: u.isActive,
     tokenVersion: u.tokenVersion,
-    mfaEnabled: !!u.mfaSecret,
+    mfaEnabled: u.mfaEnabled,
     createdAt: u.createdAt
   }));
 

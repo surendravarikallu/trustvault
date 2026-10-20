@@ -118,11 +118,24 @@ describe('Multi-Factor Authentication (MFA / TOTP) Enterprise Suite', () => {
     const challengeToken = loginRes.body.mfaChallengeToken;
     const validTotp = generateTOTP(mfaSecret);
 
-    // Attempting to reuse the exact same TOTP code verified in MFA-05 must fail with 401
-    const replayRes = await request(app)
+    // Ensure code for the current time step is recorded
+    await request(app)
       .post('/api/auth/mfa/verify-login')
       .send({
         mfaChallengeToken: challengeToken,
+        code: validTotp
+      });
+
+    // Obtain a new challenge token in the exact same second
+    const replayLogin = await request(app)
+      .post('/api/auth/login')
+      .send({ email: testUser.email, password: testUser.password });
+
+    // Attempting to reuse the exact same TOTP code verified for this step must fail with 401
+    const replayRes = await request(app)
+      .post('/api/auth/mfa/verify-login')
+      .send({
+        mfaChallengeToken: replayLogin.body.mfaChallengeToken,
         code: validTotp
       });
 

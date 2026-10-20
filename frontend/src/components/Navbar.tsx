@@ -6,11 +6,11 @@ import type { User } from '../types';
 interface NavbarProps {
   user: User;
   onLogout: () => void;
-  onSwitchPersona: (email: string) => void;
+  onSwitchPersona?: (email: string) => void;
   onOpenMfa: () => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onSwitchPersona, onOpenMfa }) => {
+export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onOpenMfa }) => {
   return (
     <>
       {/* Enterprise System Context Header */}
@@ -45,41 +45,6 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onSwitchPersona,
         </div>
 
         <div className="principal-bar">
-          {/* Principal / Persona Switcher for Evaluation */}
-          <div className="persona-selector">
-            <span className="persona-label">
-              <KeyRound size={11} style={{ verticalAlign: 'middle', marginRight: '3px' }} />
-              Test Principal:
-            </span>
-            <button
-              className={`persona-btn ${user.email === 'admin@trustvault.local' ? 'active' : ''}`}
-              onClick={() => onSwitchPersona('admin@trustvault.local')}
-              title="Audit Oversight & Role Governance"
-            >
-              Admin
-            </button>
-            <button
-              className={`persona-btn ${user.email === 'owner@trustvault.local' ? 'active' : ''}`}
-              onClick={() => onSwitchPersona('owner@trustvault.local')}
-              title="Alice: Uploads, Access Delegation, Document Owner"
-            >
-              Alice (Owner)
-            </button>
-            <button
-              className={`persona-btn ${user.email === 'viewer@trustvault.local' ? 'active' : ''}`}
-              onClick={() => onSwitchPersona('viewer@trustvault.local')}
-              title="Bob: Authorized Reader for Master Services Agreement"
-            >
-              Bob (Viewer)
-            </button>
-            <button
-              className={`persona-btn persona-eve ${user.email === 'eve@trustvault.local' ? 'active' : ''}`}
-              onClick={() => onSwitchPersona('eve@trustvault.local')}
-              title="Eve: Adversary with Zero Grants (Verifies 404 Information Barrier)"
-            >
-              Eve (Adversary)
-            </button>
-          </div>
 
           {/* Active Session Identity */}
           <div className="user-profile-badge">
