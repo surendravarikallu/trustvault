@@ -6,17 +6,18 @@ TrustVault is a zero-trust enterprise document management system built with **No
 
 ## 1. Credentials for Evaluation & Testing
 
-The system is seeded with dedicated accounts for each evaluation persona:
+The system is seeded with dedicated accounts for each evaluation persona. To log in, you can enter either the short **Username** (`admin`, `owner`, `viewer`, `eve`) or the full **Corporate Email** with the corresponding password:
 
-| Role | Email | Password | Default System Capabilities |
-| :--- | :--- | :--- | :--- |
-| **Administrator** | `admin@trustvault.local` | `Admin@TrustVault2026!` | Audit verification, user role management, system metrics. **Cannot view file contents without owner grant.** |
-| **Document Owner**| `owner@trustvault.local` | `Owner@TrustVault2026!` | Upload documents, edit metadata, replace file versions, grant/revoke permissions, AI reviewer suggestions. |
-| **Authorized Viewer** | `viewer@trustvault.local`| `Viewer@TrustVault2026!` | Read metadata and download explicitly granted documents (`MSA_Acme_2026.pdf`). Cannot upload or re-share. |
-| **Adversary (Eve)** | `eve@trustvault.local` | `Eve@TrustVault2026!` | Registered viewer with zero document grants. Used in automated tests to attempt unauthorized access. |
+| Name / Persona | Role | Username | Corporate Email | Password | 2FA Status | Default System Capabilities |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Security Administrator** | `ADMIN` | `admin` | `admin@trustvault.local` | `Admin@TrustVault2026!` | *Optional (Frictionless)* | Cryptographic audit ledger verification, user role promotions/deactivations, disaster recovery backups, and system metrics. **Zero-Trust: Cannot view private document contents without an owner grant.** |
+| **Alice Document Owner** | `OWNER` | `owner` | `owner@trustvault.local` | `Owner@TrustVault2026!` | *Optional (Frictionless)* | Upload encrypted documents, edit metadata, create version revisions, grant/revoke time-bounded access, AI reviewer suggestions. |
+| **Bob Authorized Viewer** | `VIEWER` | `viewer` | `viewer@trustvault.local` | `Viewer@TrustVault2026!` | *Optional (Frictionless)* | Read metadata and download explicitly granted documents (`MSA_Acme_2026.pdf`). Cannot upload or re-share. |
+| **Eve Adversary** | `VIEWER` | `eve` | `eve@trustvault.local` | `Eve@TrustVault2026!` | *Optional (Frictionless)* | Registered viewer with zero document grants. Used to demonstrate IDOR 404 barriers, horizontal access blocks, and audit existence oracle prevention. |
 
-> [!TIP]
-> **1-Click Evaluation Switcher:** The web interface includes a quick persona switcher in the header, allowing judges and evaluators to switch between Admin, Owner, Viewer, and Eve with a single click.
+> [!NOTE]
+> **Zero-Lockout Evaluation Architecture (Post-Login Opt-In 2FA):**  
+> To prevent evaluator and judge lockouts during asynchronous testing, 2FA is **not pre-enforced** on seed accounts. After logging in with the credentials above, users are presented with a dismissible **Post-Login 2FA Security Recommendation Banner** and an **MFA Settings** button in the navigation bar to test live RFC 6238 TOTP QR code enrollment, authenticator scanning, and emergency backup codes on demand.
 
 ---
 
@@ -66,7 +67,7 @@ npm run build:frontend
 
 ### Run Tests & Verification Suites
 ```bash
-# Run full automated test suite (8 suites, 51 security tests)
+# Run full automated test suite (9 suites, 57 security tests)
 npm test
 
 # Run mutation verification tool (proves tests go RED if check is removed)
@@ -77,6 +78,22 @@ npm run test:gatekeeper
 
 # Run ESLint architectural boundary check (asserts zero Prisma imports in controllers)
 npm run lint
+```
+
+> [!NOTE]
+> **Edge Perimeter Defense Notice (Cloudflare WAF / Bot Mitigation):**
+> - **Live Production Console (`https://trustvalt.me`):** Hardened with Cloudflare Edge WAF & Bot Mitigation to shield the live application against automated credential stuffing, web scrapers, and DDoS floods. Raw command-line HTTP scripts (`curl`, Python bots) targeting the live public endpoint receive `HTTP 403 Forbidden` / Cloudflare Managed Challenge.
+> - **Automated Grading & Security Testing:** All automated grading scripts and test suites (`npm test`, `npm run test:mutation`, `npm run test:gatekeeper`) are engineered to run locally (`http://127.0.0.1:7777` or in-memory Supertest). This verifies the entire 57-test security matrix (Single Gatekeeper DAL, IDOR 404 barriers, HMAC-SHA256 ledger integrity, token versioning, and crypto-shredding) without edge CDN network interference.
+
+### Production Daemon & Process Management (PM2)
+```bash
+# Start or reload production cluster using ecosystem config
+npx pm2 start ecosystem.config.js
+npx pm2 reload trustvault
+
+# View live production logs and monitoring
+npx pm2 logs trustvault
+npx pm2 monit
 ```
 
 ### Start Server & Cloudflare Tunnel
@@ -97,7 +114,8 @@ npm run tunnel
 | Test Suite / Script | Coverage Area | Assertions & Vectors |
 | :--- | :--- | :--- |
 | **`tests/security.test.ts`** | Core Access Control & Router Matrix | 16 tests: IDOR 404 blocking, instant revocation, expired grants, reader edit block, editor grant block, admin content block, viewer upload block, path traversal, disguised executables, audit existence oracle, search leakage, HMAC chain verification, token demotion, router coverage. |
-| **`tests/mfa-totp.test.ts`** | Multi-Factor Authentication & Replay | 8 tests: Base32 secret generation, QR code DataURI, invalid code rejection, confirmation with 8 backup codes, login challenge token isolation, 30s replay defense (CWE-287), single-use backup code consumption, dual-verification disable. |
+| **`tests/governance-and-sharing.test.ts`** | Ephemeral Sharing & Identity Governance | 5 tests: Burn-on-Download automatic grant revocation upon stream completion (`BOD-01`), In-Browser Ephemeral Preview blocking binary downloads with 403 (`PRV-01`), admin user provisioning with validation (`ADM-01`), admin password reset with immediate session revocation (`ADM-02`), admin emergency 2FA reset clearing TOTP secrets (`ADM-03`). |
+| **`tests/mfa-totp.test.ts`** | Multi-Factor Authentication & Replay | 9 tests: Base32 secret generation, QR code DataURI, invalid code rejection, confirmation with 8 backup codes, login challenge token isolation, 30s replay defense (CWE-287), single-use backup code consumption, dual-verification disable, on-demand pre-login enrollment. |
 | **`tests/threat-retention.test.ts`** | Heuristic Threat Scanner & NIST Shredder | 6 tests: Weaponized PDF `/Launch` command rejection, PDF `/JavaScript` stream rejection, OOXML `vbaProject.bin` macro rejection, obfuscated PowerShell script rejection, NIST SP 800-88 cryptographic disk overwriting, admin retention RBAC and HMAC audit logging. |
 | **`tests/backup-disaster-recovery.test.ts`** | Backups, Storage Encryption & Health | 6 tests: Deep health check with DB latency & memory metrics, AES-256-GCM envelope encryption at rest, legacy file backward compatibility, atomic snapshot creation with HMAC-signed manifest, manifest tamper detection, admin backup API routes with RBAC. |
 | **`tests/identity-revocation.test.ts`** | Session Invalidation & Timing Attacks | 4 tests: Instant user deactivation session severance (HTTP 401), dummy bcrypt hash timing parity, owner-only delegation, exact email lookup enumeration defense. |
@@ -111,6 +129,6 @@ npm run tunnel
 
 ## 5. Core Documentation
 
-- **[`THREATS.md`](./THREATS.md):** Catalog of 39 modeled threat vectors (T-01 to T-39) spanning Categories A through G, Section 3, Section 4, and Section 5.
-- **[`PROMPTS.md`](./PROMPTS.md):** Human engineering oversight log with 13 entries documenting developer interventions, AI flaw corrections, and Git commit references.
+- **[`THREATS.md`](./THREATS.md):** Catalog of 44 modeled threat vectors (T-01 to T-44) spanning Categories A through G, Section 3 (Structural Enforcement & Mutation Resistance), Section 4 (Edge Perimeter Defense & Operational Security), and Section 5 (Advanced Ephemeral Sharing & Identity Governance).
+- **[`PROMPTS.md`](./PROMPTS.md):** Human engineering oversight log with 17 entries documenting developer interventions, AI flaw corrections, and Git commit references.
 - **[`CONTEXT_HANDOVER.md`](./CONTEXT_HANDOVER.md):** Complete architectural analysis, 19 cataloged vulnerability fixes (L-01 to L-19), database schemas, and engineering invariants.
