@@ -215,6 +215,13 @@ export async function loadDocumentFor(
       throw new ForbiddenError('Unrecognized document action.');
   }
 }
+const userGrantSelect: Prisma.DocumentPermissionSelect = {
+  permissionLevel: true,
+  expiresAt: true,
+  burnOnDownload: true,
+  previewOnly: true,
+  downloadCount: true
+};
 
 /**
  * Lists documents visible to the user with pagination
@@ -244,13 +251,7 @@ export async function listDocuments(user: UserContext, page = 1, limit = 20) {
         owner: { select: { id: true, name: true, email: true } },
         permissions: {
           where: { userId: user.id },
-          select: {
-            permissionLevel: true,
-            expiresAt: true,
-            burnOnDownload: true,
-            previewOnly: true,
-            downloadCount: true
-          }
+          select: userGrantSelect
         }
       }
     })
@@ -328,13 +329,7 @@ export async function searchDocuments(user: UserContext, params: SearchDocuments
       owner: { select: { id: true, name: true, email: true } },
       permissions: {
         where: { userId: user.id },
-        select: {
-          permissionLevel: true,
-          expiresAt: true,
-          burnOnDownload: true,
-          previewOnly: true,
-          downloadCount: true
-        }
+        select: userGrantSelect
       }
     }
   });
