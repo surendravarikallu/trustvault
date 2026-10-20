@@ -32,6 +32,7 @@ export const App: React.FC = () => {
     doc: VaultDocument;
     blobUrl: string;
     mimeType: string;
+    arrayBuffer?: ArrayBuffer;
     canDownload: boolean;
   } | null>(null);
 
@@ -143,7 +144,7 @@ export const App: React.FC = () => {
     if (!token) return;
     showToast('success', `Decrypting in-browser stream for ${doc.title}...`);
     try {
-      const { blobUrl, mimeType } = await fetchDocumentBlobUrl(doc.id, token, true);
+      const { blobUrl, mimeType, arrayBuffer } = await fetchDocumentBlobUrl(doc.id, token, true);
       const isOwner = doc.owner?.id === user?.id || doc.ownerId === user?.id;
       const myGrant = Array.isArray(doc.permissions) && doc.permissions.length > 0 ? doc.permissions[0] : null;
       const isPreviewOnly = !isOwner && !!myGrant?.previewOnly;
@@ -153,6 +154,7 @@ export const App: React.FC = () => {
         doc,
         blobUrl,
         mimeType,
+        arrayBuffer,
         canDownload
       });
       showToast('success', `In-browser preview ready for ${doc.originalFilename}.`);
@@ -325,6 +327,7 @@ export const App: React.FC = () => {
           document={previewState.doc}
           blobUrl={previewState.blobUrl}
           mimeType={previewState.mimeType}
+          arrayBuffer={previewState.arrayBuffer}
           canDownload={previewState.canDownload}
           onClose={() => setPreviewState(null)}
           onDownload={() => {
