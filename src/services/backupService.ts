@@ -53,7 +53,11 @@ export class BackupService {
     const dbDump = await exportDatabaseSnapshot();
 
     const dbDumpPath = path.join(backupFolder, 'database_dump.json');
-    await fs.promises.writeFile(dbDumpPath, JSON.stringify(dbDump, null, 2), 'utf-8');
+    await fs.promises.writeFile(
+      dbDumpPath,
+      JSON.stringify(dbDump, (_k, v) => (typeof v === 'bigint' ? v.toString() : v), 2),
+      'utf-8'
+    );
 
     // 2. Snapshot Storage Blobs
     const storageBackupDir = path.join(backupFolder, 'storage_blobs');
@@ -80,7 +84,7 @@ export class BackupService {
     // 4. Calculate Audit Head
     const latestAudit = dbDump.auditLogs[dbDump.auditLogs.length - 1];
     const auditHead = {
-      sequenceNumber: latestAudit ? latestAudit.sequenceNumber : '0',
+      sequenceNumber: latestAudit ? latestAudit.sequenceNumber.toString() : '0',
       headHash: latestAudit ? latestAudit.hash : 'GENESIS'
     };
 
@@ -102,7 +106,7 @@ export class BackupService {
 
     const manifestHmac = crypto
       .createHmac('sha256', config.auditHmacSecret)
-      .update(JSON.stringify(manifestData))
+      .update(JSON.stringify(manifestData, (_k, v) => (typeof v === 'bigint' ? v.toString() : v)))
       .digest('hex');
 
     const manifest: BackupManifest = {
@@ -112,7 +116,7 @@ export class BackupService {
 
     await fs.promises.writeFile(
       path.join(backupFolder, 'manifest.json'),
-      JSON.stringify(manifest, null, 2),
+      JSON.stringify(manifest, (_k, v) => (typeof v === 'bigint' ? v.toString() : v), 2),
       'utf-8'
     );
 
@@ -186,7 +190,7 @@ export class BackupService {
     const { manifestHmac, ...unsignedData } = manifest;
     const computedHmac = crypto
       .createHmac('sha256', config.auditHmacSecret)
-      .update(JSON.stringify(unsignedData))
+      .update(JSON.stringify(unsignedData, (_k, v) => (typeof v === 'bigint' ? v.toString() : v)))
       .digest('hex');
 
     if (manifestHmac !== computedHmac) {

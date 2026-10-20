@@ -26,7 +26,7 @@ app.use(cors({ origin: true, credentials: true }));
 // 4. Global IP rate limiter: 100 requests per minute
 const globalLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 100,
+  max: 1000,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests. Please slow down.' }

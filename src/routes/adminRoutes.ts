@@ -8,6 +8,9 @@ import {
   changeUserRole,
   deactivateUser,
   getUsers,
+  createAdminUserHandler,
+  adminResetPasswordHandler,
+  adminResetMfaHandler,
   createBackupHandler,
   listBackupsHandler,
   verifyBackupHandler,
@@ -27,6 +30,9 @@ adminRouter.get('/audit/verify', verifyAuditLedger);
 adminRouter.patch('/users/:id/role', changeUserRole);
 adminRouter.post('/users/:id/deactivate', deactivateUser);
 adminRouter.get('/users', getUsers);
+adminRouter.post('/users', createAdminUserHandler);
+adminRouter.post('/users/:id/reset-password', adminResetPasswordHandler);
+adminRouter.post('/users/:id/reset-2fa', adminResetMfaHandler);
 
 // Disaster Recovery & Automated Backups
 adminRouter.post('/backups', createBackupHandler);

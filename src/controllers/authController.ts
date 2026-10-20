@@ -7,6 +7,8 @@ import { config } from '../config';
 import { AuthenticatedRequest } from '../middleware/auth';
 import {
   getUserByEmail,
+  getUserByEmailOrUsername,
+  getUserById,
   createUser,
   incrementTokenVersion,
   lookupUserByExactEmail,
@@ -26,9 +28,12 @@ const RegisterSchema = z.object({
 });
 
 const LoginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().min(1).optional(),
+  username: z.string().min(1).optional(),
   password: z.string().min(1),
   enrollMfa: z.boolean().optional()
+}).refine(data => Boolean(data.email || data.username), {
+  message: 'Valid username or email is required.'
 });
 
 export async function register(req: Request, res: Response): Promise<void> {
@@ -77,23 +82,24 @@ export async function register(req: Request, res: Response): Promise<void> {
 export async function login(req: Request, res: Response): Promise<void> {
   const parseResult = LoginSchema.safeParse(req.body);
   if (!parseResult.success) {
-    res.status(400).json({ error: 'Valid email and password are required.' });
+    res.status(400).json({ error: 'Valid username or email and password are required.' });
     return;
   }
 
-  const { email, password } = parseResult.data;
-  const user = await getUserByEmail(email);
+  const { email, username, password } = parseResult.data;
+  const identifier = (email || username || '').trim();
+  const user = await getUserByEmailOrUsername(identifier);
 
   if (!user || !user.isActive) {
     // Defense against Loophole L-08: Execute dummy bcrypt compare to equalize response time
     await bcrypt.compare(password, DUMMY_BCRYPT_HASH);
-    res.status(401).json({ error: 'Invalid email or password.' });
+    res.status(401).json({ error: 'Invalid username/email or password.' });
     return;
   }
 
   const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
   if (!isPasswordValid) {
-    res.status(401).json({ error: 'Invalid email or password.' });
+    res.status(401).json({ error: 'Invalid username/email or password.' });
     return;
   }
 
@@ -150,7 +156,8 @@ export async function login(req: Request, res: Response): Promise<void> {
       id: user.id,
       email: user.email,
       name: user.name,
-      role: user.role
+      role: user.role,
+      mfaEnabled: user.mfaEnabled
     }
   });
 }
@@ -172,7 +179,13 @@ export async function me(req: AuthenticatedRequest, res: Response): Promise<void
     return;
   }
 
-  res.json({ user: req.user });
+  const fullUser = await getUserById(req.user.id);
+  res.json({
+    user: {
+      ...req.user,
+      mfaEnabled: fullUser?.mfaEnabled ?? false
+    }
+  });
 }
 
 export async function lookupUser(req: AuthenticatedRequest, res: Response): Promise<void> {

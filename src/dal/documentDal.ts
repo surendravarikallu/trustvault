@@ -1,6 +1,7 @@
 import { PrismaClient, Prisma, Role, PermissionLevel, AuditStatus } from '@prisma/client';
 import { logAuditEvent, logAccessDenied } from '../services/auditService';
 import { StorageService } from '../services/storageService';
+import { ActiveGrantContext } from './types';
 
 const prisma = new PrismaClient();
 
@@ -106,7 +107,7 @@ export async function loadDocumentFor(
   }
 
   const isOwner = doc.ownerId === user.id;
-  const activeGrant = doc.permissions[0]; // Active grant for this user, if any
+  const activeGrant: ActiveGrantContext | undefined = doc.permissions[0] as ActiveGrantContext | undefined; // Active grant for this user, if any
   const isAdmin = user.role === Role.ADMIN;
   const hasVisibility = isOwner || !!activeGrant || isAdmin;
 
@@ -169,7 +170,7 @@ export async function loadDocumentFor(
         details: `Downloaded file ${doc.originalFilename}`
       });
 
-      return { document: doc, filePath };
+      return { document: doc, filePath, activeGrant };
     }
 
     case 'edit': {
@@ -237,12 +238,19 @@ export async function listDocuments(user: UserContext, page = 1, limit = 20) {
         fileSize: true,
         mimeType: true,
         category: true,
+        fileHash: true,
         createdAt: true,
         updatedAt: true,
         owner: { select: { id: true, name: true, email: true } },
         permissions: {
           where: { userId: user.id },
-          select: { permissionLevel: true, expiresAt: true }
+          select: {
+            permissionLevel: true,
+            expiresAt: true,
+            burnOnDownload: true,
+            previewOnly: true,
+            downloadCount: true
+          }
         }
       }
     })
@@ -314,9 +322,20 @@ export async function searchDocuments(user: UserContext, params: SearchDocuments
       fileSize: true,
       mimeType: true,
       category: true,
+      fileHash: true,
       createdAt: true,
       updatedAt: true,
-      owner: { select: { id: true, name: true, email: true } }
+      owner: { select: { id: true, name: true, email: true } },
+      permissions: {
+        where: { userId: user.id },
+        select: {
+          permissionLevel: true,
+          expiresAt: true,
+          burnOnDownload: true,
+          previewOnly: true,
+          downloadCount: true
+        }
+      }
     }
   });
 

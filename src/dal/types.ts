@@ -14,3 +14,16 @@ export interface RequestContext {
   userAgent: string;
   details?: string;
 }
+
+export interface ActiveGrantContext {
+  id: string;
+  documentId: string;
+  userId: string;
+  permissionLevel: PermissionLevel;
+  expiresAt: Date | null;
+  burnOnDownload?: boolean;
+  previewOnly?: boolean;
+  downloadCount?: number;
+  grantedById: string;
+  grantedAt: Date;
+}

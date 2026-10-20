@@ -314,6 +314,29 @@ export async function getAuditLogs(filter?: { action?: string; documentId?: stri
     'eve@trustvault.local': 'Eve Adversary'
   };
 
+  function formatHumanNameFromEmail(email: string): string {
+    const clean = email.toLowerCase().trim();
+    const prefix = clean.split('@')[0];
+
+    if (/^concurrent[_-]?(\d+)$/i.test(prefix)) {
+      const num = prefix.match(/^concurrent[_-]?(\d+)$/i)![1];
+      return `Concurrent Test Auditor ${num}`;
+    }
+    if (/^user(\d+)$/i.test(prefix)) {
+      const num = prefix.match(/^user(\d+)$/i)![1];
+      return `Automated Test Agent ${num}`;
+    }
+    if (prefix === 'audit_test') return 'HMAC Integrity Verifier';
+    if (prefix.startsWith('demote_test')) return 'Demoted Test Candidate';
+    if (prefix.startsWith('test-user') || prefix.startsWith('test_user')) return 'Security Test Runner';
+
+    return prefix
+      .split(/[._-]/)
+      .filter(Boolean)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  }
+
   const serializedLogs = logs.map((log) => {
     let resolvedName: string | null = null;
     if (log.userId && userNameById.has(log.userId)) {
@@ -322,6 +345,12 @@ export async function getAuditLogs(filter?: { action?: string; documentId?: stri
       resolvedName = userNameByEmail.get(log.userEmail.toLowerCase())!;
     } else if (log.userEmail && fallbackNames[log.userEmail.toLowerCase()]) {
       resolvedName = fallbackNames[log.userEmail.toLowerCase()];
+    } else if (log.userEmail) {
+      resolvedName = formatHumanNameFromEmail(log.userEmail);
+    } else if (log.userId) {
+      resolvedName = `Principal (${log.userId.substring(0, 8)})`;
+    } else {
+      resolvedName = 'System Automated Agent';
     }
 
     return {

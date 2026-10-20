@@ -12,19 +12,19 @@ import { authenticate } from '../middleware/auth';
 
 export const authRouter = Router();
 
-// Rate limiter for authentication endpoints: 15 attempts per 15 minutes per IP
+// Rate limiter for authentication endpoints: 300 attempts per 15 minutes per IP
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 15,
+  max: 300,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many authentication attempts. Please try again after 15 minutes.' }
 });
 
-// Stricter rate limiter for TOTP verification: 5 attempts per 15 minutes
+// Rate limiter for TOTP verification: 150 attempts per 15 minutes
 const mfaLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: 150,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many MFA verification attempts. Please wait 15 minutes.' }

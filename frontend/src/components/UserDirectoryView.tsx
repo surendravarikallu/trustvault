@@ -1,7 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { KeyRound, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
+import {
+  KeyRound,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+  UserPlus,
+  Key,
+  ShieldAlert,
+  X,
+  Wand2
+} from 'lucide-react';
 import type { User, Role } from '../types';
-import { fetchAllUsers, changeUserRole, deactivateUser } from '../api';
+import {
+  fetchAllUsers,
+  changeUserRole,
+  deactivateUser,
+  apiAdminCreateUser,
+  apiAdminResetPassword,
+  apiAdminResetMfa
+} from '../api';
 
 interface UserDirectoryViewProps {
   token: string;
@@ -13,6 +30,20 @@ export const UserDirectoryView: React.FC<UserDirectoryViewProps> = ({ token, cur
   const [isLoading, setIsLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Create User Modal State
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [createName, setCreateName] = useState('');
+  const [createEmail, setCreateEmail] = useState('');
+  const [createPassword, setCreatePassword] = useState('');
+  const [createRole, setCreateRole] = useState<Role>('VIEWER');
+  const [isCreating, setIsCreating] = useState(false);
+
+  // Reset Password Modal State
+  const [isResetOpen, setIsResetOpen] = useState(false);
+  const [resetTargetUser, setResetTargetUser] = useState<User | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [isResetting, setIsResetting] = useState(false);
 
   useEffect(() => {
     loadUsers();
@@ -57,6 +88,86 @@ export const UserDirectoryView: React.FC<UserDirectoryViewProps> = ({ token, cur
     }
   };
 
+  const generateStrongPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*';
+    let pwd = '';
+    for (let i = 0; i < 16; i++) {
+      pwd += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return pwd;
+  };
+
+  const handleCreateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setMsg(null);
+    setIsCreating(true);
+
+    try {
+      await apiAdminCreateUser(token, {
+        name: createName.trim(),
+        email: createEmail.trim(),
+        password: createPassword,
+        role: createRole
+      });
+      setMsg(`Successfully provisioned account for ${createEmail} with role ${createRole}.`);
+      setIsCreateOpen(false);
+      setCreateName('');
+      setCreateEmail('');
+      setCreatePassword('');
+      setCreateRole('VIEWER');
+      await loadUsers();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const openResetPasswordModal = (user: User) => {
+    setResetTargetUser(user);
+    setNewPassword(generateStrongPassword());
+    setIsResetOpen(true);
+    setError(null);
+  };
+
+  const handleResetPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetTargetUser) return;
+    setError(null);
+    setMsg(null);
+    setIsResetting(true);
+
+    try {
+      await apiAdminResetPassword(token, resetTargetUser.id, newPassword);
+      setMsg(`Password reset for ${resetTargetUser.email}. Token version incremented and all active sessions revoked.`);
+      setIsResetOpen(false);
+      setResetTargetUser(null);
+      setNewPassword('');
+      await loadUsers();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  const handleResetMfa = async (user: User) => {
+    if (!window.confirm(`Emergency Reset 2FA for ${user.name} (${user.email})?\n\nThis will remove their TOTP secret, revoke active sessions, and allow them to log in with password only until 2FA is re-enrolled.`)) {
+      return;
+    }
+
+    setError(null);
+    setMsg(null);
+    try {
+      await apiAdminResetMfa(token, user.id);
+      setMsg(`Emergency 2FA reset completed for ${user.email}. Active sessions revoked.`);
+      await loadUsers();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
   return (
     <div>
       {/* Enterprise Security Architecture Banner */}
@@ -76,7 +187,7 @@ export const UserDirectoryView: React.FC<UserDirectoryViewProps> = ({ token, cur
           <span>Real-Time Role Governance & Monotonic Session Revocation (L-01)</span>
           {isLoading && <RefreshCw size={12} className="spin-icon" style={{ marginLeft: 'auto' }} />}
         </div>
-        Changing a user's role or deactivating an identity atomically increments <span className="mono-cell">tokenVersion</span> in PostgreSQL. The authentication middleware verifies the database tokenVersion on every request, neutralizing stolen or stale JWT tokens without requiring distributed Redis blacklists.
+        Admin governance allows provisioning identities, reassigning least-privilege roles, issuing cryptographic password resets, and executing emergency 2FA resets. Every administrative update atomically increments <span className="mono-cell">tokenVersion</span> in PostgreSQL, instantly severing compromised active sessions.
       </div>
 
       {msg && (
@@ -119,6 +230,31 @@ export const UserDirectoryView: React.FC<UserDirectoryViewProps> = ({ token, cur
         </div>
       )}
 
+      {/* Directory Controls Bar */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '12px'
+        }}
+      >
+        <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
+          Enterprise User Directory ({users.length})
+        </div>
+        <button
+          type="button"
+          className="btn btn-primary btn-sm"
+          onClick={() => {
+            setCreatePassword(generateStrongPassword());
+            setIsCreateOpen(true);
+          }}
+        >
+          <UserPlus size={13} />
+          <span>Provision New User</span>
+        </button>
+      </div>
+
       {/* User Directory Table */}
       <div className="data-table-wrapper">
         <table className="data-table">
@@ -127,9 +263,10 @@ export const UserDirectoryView: React.FC<UserDirectoryViewProps> = ({ token, cur
               <th>Identity</th>
               <th>Corporate Email</th>
               <th>Role Assignment</th>
+              <th>2FA Status</th>
               <th>Token Version</th>
               <th>Status</th>
-              <th style={{ textAlign: 'right' }}>Actions</th>
+              <th style={{ textAlign: 'right' }}>Administrative Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -164,6 +301,26 @@ export const UserDirectoryView: React.FC<UserDirectoryViewProps> = ({ token, cur
                     )}
                   </td>
 
+                  <td>
+                    {u.mfaEnabled ? (
+                      <span className="status-pill status-SUCCESS" style={{ fontSize: '10px' }}>
+                        2FA ACTIVE
+                      </span>
+                    ) : (
+                      <span
+                        className="status-pill"
+                        style={{
+                          fontSize: '10px',
+                          background: 'rgba(255,255,255,0.04)',
+                          color: 'var(--text-dim)',
+                          borderColor: 'var(--border-subtle)'
+                        }}
+                      >
+                        NOT CONFIGURED
+                      </span>
+                    )}
+                  </td>
+
                   <td className="mono-cell" style={{ fontSize: '11px' }}>
                     v{u.tokenVersion}
                   </td>
@@ -177,15 +334,47 @@ export const UserDirectoryView: React.FC<UserDirectoryViewProps> = ({ token, cur
                   </td>
 
                   <td style={{ textAlign: 'right' }}>
-                    {!isSelf && u.isActive && (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                       <button
                         type="button"
-                        className="btn btn-danger btn-xs"
-                        onClick={() => handleDeactivate(u.id, u.name)}
+                        className="btn btn-secondary btn-xs"
+                        onClick={() => openResetPasswordModal(u)}
+                        title="Admin Reset Password (Invalidates sessions)"
                       >
-                        Deactivate
+                        <Key size={11} />
+                        <span>Reset Pwd</span>
                       </button>
-                    )}
+
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-xs"
+                        onClick={() => handleResetMfa(u)}
+                        disabled={!u.mfaEnabled}
+                        title={
+                          u.mfaEnabled
+                            ? 'Emergency Reset 2FA (Clears TOTP secret and revokes sessions)'
+                            : '2FA not enabled for this user'
+                        }
+                        style={{
+                          opacity: u.mfaEnabled ? 1 : 0.4,
+                          cursor: u.mfaEnabled ? 'pointer' : 'not-allowed'
+                        }}
+                      >
+                        <ShieldAlert size={11} color={u.mfaEnabled ? 'var(--color-amber)' : 'inherit'} />
+                        <span>Reset 2FA</span>
+                      </button>
+
+                      {!isSelf && u.isActive && (
+                        <button
+                          type="button"
+                          className="btn btn-danger btn-xs"
+                          onClick={() => handleDeactivate(u.id, u.name)}
+                          title="Immediately terminate account and active tokens"
+                        >
+                          Deactivate
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );
@@ -193,6 +382,200 @@ export const UserDirectoryView: React.FC<UserDirectoryViewProps> = ({ token, cur
           </tbody>
         </table>
       </div>
+
+      {/* Provision User Modal */}
+      {isCreateOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '480px' }}>
+            <div className="modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <UserPlus size={16} color="#93c5fd" />
+                <span style={{ fontWeight: 600, fontSize: '13px' }}>Provision New Identity</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCreateOpen(false)}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateSubmit}>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <label style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-dim)', display: 'block', marginBottom: '4px' }}>
+                    Full Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Carol Danvers"
+                    value={createName}
+                    onChange={(e) => setCreateName(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-dim)', display: 'block', marginBottom: '4px' }}>
+                    Corporate Email
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="carol@trustvault.local"
+                    value={createEmail}
+                    onChange={(e) => setCreateEmail(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <label style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-dim)' }}>
+                      Initial Password
+                    </label>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-xs"
+                      onClick={() => setCreatePassword(generateStrongPassword())}
+                      style={{ padding: '2px 6px', fontSize: '10px' }}
+                    >
+                      <Wand2 size={10} />
+                      <span>Generate</span>
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    minLength={8}
+                    value={createPassword}
+                    onChange={(e) => setCreatePassword(e.target.value)}
+                    style={{ fontFamily: 'var(--font-mono)' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-dim)', display: 'block', marginBottom: '4px' }}>
+                    Assigned Role
+                  </label>
+                  <select
+                    value={createRole}
+                    onChange={(e) => setCreateRole(e.target.value as Role)}
+                  >
+                    <option value="VIEWER">VIEWER (Read & Ephemeral View Grants)</option>
+                    <option value="OWNER">OWNER (Upload, Authorize, Delegate)</option>
+                    <option value="ADMIN">ADMIN (System Governance & Audit Oversight)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setIsCreateOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={isCreating}
+                >
+                  {isCreating ? 'Provisioning...' : 'Provision User'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Password Reset Modal */}
+      {isResetOpen && resetTargetUser && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '480px' }}>
+            <div className="modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Key size={16} color="var(--color-amber)" />
+                <span style={{ fontWeight: 600, fontSize: '13px' }}>
+                  Admin Password Reset: {resetTargetUser.name}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsResetOpen(false)}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleResetPasswordSubmit}>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div
+                  style={{
+                    background: 'var(--bg-surface-raised)',
+                    border: '1px solid var(--border-default)',
+                    borderRadius: 'var(--radius-sm)',
+                    padding: '10px 14px',
+                    fontSize: '11px',
+                    color: 'var(--text-secondary)'
+                  }}
+                >
+                  <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '2px' }}>
+                    Target Account: {resetTargetUser.email}
+                  </div>
+                  <span>
+                    Enforced Security Rule (L-01): Setting a new password increments the user's <span className="mono-cell">tokenVersion</span>, immediately revoking all active JWT sessions on all devices.
+                  </span>
+                </div>
+
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <label style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-dim)' }}>
+                      New Password
+                    </label>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-xs"
+                      onClick={() => setNewPassword(generateStrongPassword())}
+                      style={{ padding: '2px 6px', fontSize: '10px' }}
+                    >
+                      <Wand2 size={10} />
+                      <span>Generate</span>
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    minLength={8}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    style={{ fontFamily: 'var(--font-mono)' }}
+                  />
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setIsResetOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={isResetting}
+                >
+                  {isResetting ? 'Updating...' : 'Confirm Reset Password'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

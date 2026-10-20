@@ -15,7 +15,8 @@ import {
   Info,
   ChevronDown,
   ChevronRight,
-  ShieldBan
+  ShieldBan,
+  ArrowRight
 } from 'lucide-react';
 import type { AuditRecord, AuditVerification } from '../types';
 import { fetchAuditLogs, verifyAuditLedger } from '../api';
@@ -71,13 +72,33 @@ export const AuditLedgerView: React.FC<AuditLedgerViewProps> = ({ token }) => {
     setTimeout(() => setCopiedHash(null), 2000);
   };
 
+  const formatCleanName = (email: string): string => {
+    const prefix = email.split('@')[0];
+    if (/^concurrent[_-]?(\d+)$/i.test(prefix)) {
+      const num = prefix.match(/^concurrent[_-]?(\d+)$/i)![1];
+      return `Concurrent Test Auditor ${num}`;
+    }
+    if (/^user(\d+)$/i.test(prefix)) {
+      const num = prefix.match(/^user(\d+)$/i)![1];
+      return `Automated Test Agent ${num}`;
+    }
+    if (prefix === 'audit_test') return 'HMAC Integrity Verifier';
+    if (prefix.startsWith('demote_test')) return 'Demoted Test Candidate';
+    return prefix
+      .split(/[._-]/)
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+  };
+
   /**
    * Translates raw audit records into human-readable enterprise security narratives
    */
   const formatAuditStory = (log: AuditRecord) => {
-    const actor = log.userName && log.userEmail
-      ? `${log.userName} (${log.userEmail})`
-      : (log.userName || log.userEmail || (log.userId ? `User(${log.userId.substring(0, 8)})` : 'Unauthenticated Principal'));
+    const displayName = log.userName || (log.userEmail ? formatCleanName(log.userEmail) : 'System Principal');
+    const actor = log.userEmail
+      ? `${displayName} (${log.userEmail})`
+      : displayName;
     const doc = log.documentTitle || (log.documentId ? `Document(${log.documentId.substring(0, 8)})` : null);
 
     switch (log.action) {
@@ -391,7 +412,7 @@ export const AuditLedgerView: React.FC<AuditLedgerViewProps> = ({ token }) => {
                           <div style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                             <User size={11} color="var(--text-dim)" style={{ flexShrink: 0 }} />
                             <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                              {log.userName || (log.userEmail ? log.userEmail.split('@')[0] : 'System')}
+                              {log.userName || (log.userEmail ? formatCleanName(log.userEmail) : 'System Principal')}
                             </span>
                           </div>
                           {log.userEmail && (
@@ -420,7 +441,7 @@ export const AuditLedgerView: React.FC<AuditLedgerViewProps> = ({ token }) => {
                           >
                             {log.previousHash ? `${log.previousHash.substring(0, 5)}..` : 'GENESIS'}
                           </span>
-                          <span style={{ color: 'var(--text-dim)', fontSize: '10px' }}>➔</span>
+                          <ArrowRight size={10} color="var(--text-dim)" />
                           <span
                             className="hash-pill"
                             style={{ fontSize: '10px' }}

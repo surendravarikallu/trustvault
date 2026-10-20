@@ -260,7 +260,9 @@ export async function verifyLoginMFA(req: Request, res: Response): Promise<void>
     user: {
       id: mfaState.id,
       email: mfaState.email,
-      role: mfaState.role
+      name: mfaState.name,
+      role: mfaState.role,
+      mfaEnabled: true
     }
   });
 }
