@@ -9,8 +9,12 @@ export async function grantDocumentPermission(
   permissionLevel: PermissionLevel,
   expiresAt: Date | null,
   grantedBy: { id: string; email: string },
-  reqContext: { ip: string; userAgent: string }
+  reqContext: { ip: string; userAgent: string },
+  options?: { burnOnDownload?: boolean; previewOnly?: boolean }
 ) {
+  const burnOnDownload = options?.burnOnDownload ?? false;
+  const previewOnly = options?.previewOnly ?? false;
+
   const result = await prisma.documentPermission.upsert({
     where: {
       documentId_userId: {
@@ -21,6 +25,8 @@ export async function grantDocumentPermission(
     update: {
       permissionLevel,
       expiresAt,
+      burnOnDownload,
+      previewOnly,
       grantedById: grantedBy.id,
       grantedAt: new Date()
     },
@@ -29,6 +35,8 @@ export async function grantDocumentPermission(
       userId: targetUserId,
       permissionLevel,
       expiresAt,
+      burnOnDownload,
+      previewOnly,
       grantedById: grantedBy.id
     },
     include: {
@@ -36,6 +44,12 @@ export async function grantDocumentPermission(
       document: { select: { id: true, title: true } }
     }
   });
+
+  const traits: string[] = [];
+  if (burnOnDownload) traits.push('Burn-on-Download: Enabled');
+  if (previewOnly) traits.push('In-Browser Preview Only');
+  if (expiresAt) traits.push(`Expires: ${expiresAt.toISOString()}`);
+  const traitStr = traits.length > 0 ? ` [${traits.join(', ')}]` : '';
 
   // Audit event
   await logAuditEvent({
@@ -47,10 +61,48 @@ export async function grantDocumentPermission(
     status: AuditStatus.SUCCESS,
     ipAddress: reqContext.ip,
     userAgent: reqContext.userAgent,
-    details: `Granted ${permissionLevel} access to user ${result.user.email} (Expires: ${expiresAt ? expiresAt.toISOString() : 'Never'})`
+    details: `Granted ${permissionLevel} access to user ${result.user.email}${traitStr}`
   });
 
   return result;
+}
+
+export async function burnDocumentPermission(
+  documentId: string,
+  userId: string,
+  userEmail: string,
+  reqContext: { ip: string; userAgent: string }
+) {
+  const perm = await prisma.documentPermission.findUnique({
+    where: {
+      documentId_userId: { documentId, userId }
+    },
+    include: {
+      document: { select: { title: true } }
+    }
+  });
+
+  if (!perm) return false;
+
+  await prisma.documentPermission.delete({
+    where: {
+      documentId_userId: { documentId, userId }
+    }
+  });
+
+  await logAuditEvent({
+    action: 'PERMISSION_BURNED_AFTER_DOWNLOAD',
+    userId,
+    userEmail,
+    documentId,
+    documentTitle: perm.document.title,
+    status: AuditStatus.SUCCESS,
+    ipAddress: reqContext.ip,
+    userAgent: reqContext.userAgent,
+    details: `Burn-on-Download executed: single-use grant for ${userEmail} automatically self-destructed following download.`
+  });
+
+  return true;
 }
 
 export async function revokeDocumentPermission(

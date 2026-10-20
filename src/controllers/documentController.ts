@@ -17,6 +17,7 @@ import {
   ForbiddenError,
   RequestContext
 } from '../dal/documentDal';
+import { burnDocumentPermission } from '../dal/permissionDal';
 
 export function getRequestContext(req: AuthenticatedRequest): RequestContext {
   const ip = (req.headers['cf-connecting-ip'] as string) || req.ip || req.socket.remoteAddress || '127.0.0.1';
@@ -158,21 +159,44 @@ export async function downloadDocument(req: AuthenticatedRequest, res: Response)
   }
 
   try {
-    const { document, filePath } = await loadDocumentFor(user, id, 'download', getRequestContext(req));
+    const { document, filePath, activeGrant } = await loadDocumentFor(user, id, 'download', getRequestContext(req));
 
     if (!filePath || !fs.existsSync(filePath)) {
       res.status(404).json({ error: 'Stored file blob is missing.' });
       return;
     }
 
+    const isPreview = req.query.preview === 'true';
+
+    // Enforcement: If shared as Preview-Only, raw attachment downloads are prohibited
+    if (activeGrant?.previewOnly && !isPreview) {
+      res.status(403).json({
+        error: 'This document was shared with In-Browser Preview Only restrictions. Binary file download is prohibited.'
+      });
+      return;
+    }
+
     // Safe streaming headers with RFC 5987 Content-Disposition
     const encodedFilename = encodeURIComponent(document.originalFilename).replace(/['()]/g, escape);
-    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Type', isPreview ? (document.mimeType || 'application/octet-stream') : 'application/octet-stream');
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    const dispositionType = isPreview ? 'inline' : 'attachment';
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename="${document.originalFilename.replace(/"/g, '')}"; filename*=UTF-8''${encodedFilename}`
+      `${dispositionType}; filename="${document.originalFilename.replace(/"/g, '')}"; filename*=UTF-8''${encodedFilename}`
     );
+
+    // Enforcement: Burn-on-Download (One-Time Secure Transfer)
+    // If the grant is marked burnOnDownload, automatically revoke access as soon as download completes
+    if (activeGrant?.burnOnDownload && !isPreview) {
+      res.on('finish', async () => {
+        try {
+          await burnDocumentPermission(document.id, user.id, user.email, getRequestContext(req));
+        } catch (burnErr) {
+          console.error('Failed to execute burn-on-download auto-revocation:', burnErr);
+        }
+      });
+    }
 
     const stream = StorageService.createDecryptedReadStream(filePath);
     stream.on('error', (err) => {

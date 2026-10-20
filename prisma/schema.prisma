@@ -95,6 +95,9 @@ model DocumentPermission {
   user            User            @relation("UserPermissions", fields: [userId], references: [id], onDelete: Cascade)
   permissionLevel PermissionLevel
   expiresAt       DateTime?
+  burnOnDownload  Boolean         @default(false)
+  downloadCount   Int             @default(0)
+  previewOnly     Boolean         @default(false)
   grantedById     String
   grantedBy       User            @relation("GrantedBy", fields: [grantedById], references: [id], onDelete: Restrict)
   grantedAt       DateTime        @default(now())

@@ -15,7 +15,9 @@ import { logAuditEvent } from '../dal/auditDal';
 const GrantPermissionSchema = z.object({
   targetEmail: z.string().email(),
   permissionLevel: z.nativeEnum(PermissionLevel),
-  expiresAt: z.string().optional().nullable()
+  expiresAt: z.string().optional().nullable(),
+  burnOnDownload: z.boolean().optional(),
+  previewOnly: z.boolean().optional()
 });
 
 export async function grantPermission(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -28,7 +30,7 @@ export async function grantPermission(req: AuthenticatedRequest, res: Response):
     return;
   }
 
-  const { targetEmail, permissionLevel, expiresAt } = parseResult.data;
+  const { targetEmail, permissionLevel, expiresAt, burnOnDownload, previewOnly } = parseResult.data;
 
   try {
     // 1. Authorization check: Owner-only authority (L-03)
@@ -53,7 +55,8 @@ export async function grantPermission(req: AuthenticatedRequest, res: Response):
       permissionLevel,
       expirationDate,
       user,
-      getRequestContext(req)
+      getRequestContext(req),
+      { burnOnDownload, previewOnly }
     );
 
     res.status(201).json({

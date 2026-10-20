@@ -1,16 +1,37 @@
 import { Response } from 'express';
+import bcrypt from 'bcrypt';
 import { z } from 'zod';
 import { Role, AuditStatus } from '../dal/types';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { getRequestContext } from './documentController';
 import { listDocuments } from '../dal/documentDal';
 import { getAuditLogs, verifyAuditChain, logAuditEvent } from '../dal/auditDal';
-import { setUserRole, setUserActive, listAllUsers, getUserById } from '../dal/userDal';
+import {
+  setUserRole,
+  setUserActive,
+  listAllUsers,
+  getUserById,
+  getUserByEmail,
+  createUser,
+  adminResetPassword,
+  adminResetMfa
+} from '../dal/userDal';
 import { BackupService } from '../services/backupService';
 import { RetentionService } from '../services/retentionService';
 
 const RoleChangeSchema = z.object({
   role: z.nativeEnum(Role)
+});
+
+const CreateUserSchema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters'),
+  email: z.string().email('Valid corporate email required'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+  role: z.nativeEnum(Role).optional().default(Role.VIEWER)
+});
+
+const ResetPasswordSchema = z.object({
+  newPassword: z.string().min(8, 'New password must be at least 8 characters')
 });
 
 export async function getAdminDocuments(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -149,6 +170,135 @@ export async function getUsers(req: AuthenticatedRequest, res: Response): Promis
   try {
     const result = await listAllUsers(page, limit);
     res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
+export async function createAdminUserHandler(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const admin = req.user!;
+  const parseResult = CreateUserSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    res.status(400).json({ error: parseResult.error.errors[0].message });
+    return;
+  }
+
+  const { name, email, password, role } = parseResult.data;
+
+  try {
+    const existing = await getUserByEmail(email);
+    if (existing) {
+      res.status(400).json({ error: 'User with this email already exists.' });
+      return;
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    const newUser = await createUser({
+      name,
+      email,
+      passwordHash,
+      role
+    });
+
+    await logAuditEvent({
+      action: 'USER_CREATED_BY_ADMIN',
+      userId: admin.id,
+      userEmail: admin.email,
+      documentId: null,
+      documentTitle: null,
+      status: AuditStatus.SUCCESS,
+      ipAddress: getRequestContext(req).ip,
+      userAgent: getRequestContext(req).userAgent,
+      details: `Admin ${admin.email} created user ${newUser.email} with role ${newUser.role}.`
+    });
+
+    res.status(201).json({
+      message: `User ${newUser.email} created successfully.`,
+      user: {
+        id: newUser.id,
+        name: newUser.name,
+        email: newUser.email,
+        role: newUser.role,
+        isActive: newUser.isActive
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
+export async function adminResetPasswordHandler(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const admin = req.user!;
+  const { id } = req.params;
+
+  const parseResult = ResetPasswordSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    res.status(400).json({ error: parseResult.error.errors[0].message });
+    return;
+  }
+
+  const { newPassword } = parseResult.data;
+
+  try {
+    const targetUser = await getUserById(id);
+    if (!targetUser) {
+      res.status(404).json({ error: 'User not found.' });
+      return;
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    const updated = await adminResetPassword(id, passwordHash);
+
+    await logAuditEvent({
+      action: 'USER_PASSWORD_RESET_BY_ADMIN',
+      userId: admin.id,
+      userEmail: admin.email,
+      documentId: null,
+      documentTitle: null,
+      status: AuditStatus.SUCCESS,
+      ipAddress: getRequestContext(req).ip,
+      userAgent: getRequestContext(req).userAgent,
+      details: `Admin ${admin.email} reset password for user ${targetUser.email}. All sessions terminated.`
+    });
+
+    res.json({
+      message: `Password reset successfully for ${targetUser.email}. All active sessions invalidated.`,
+      tokenVersion: updated.tokenVersion
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
+export async function adminResetMfaHandler(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const admin = req.user!;
+  const { id } = req.params;
+
+  try {
+    const targetUser = await getUserById(id);
+    if (!targetUser) {
+      res.status(404).json({ error: 'User not found.' });
+      return;
+    }
+
+    const updated = await adminResetMfa(id);
+
+    await logAuditEvent({
+      action: 'USER_MFA_RESET_BY_ADMIN',
+      userId: admin.id,
+      userEmail: admin.email,
+      documentId: null,
+      documentTitle: null,
+      status: AuditStatus.SUCCESS,
+      ipAddress: getRequestContext(req).ip,
+      userAgent: getRequestContext(req).userAgent,
+      details: `Admin ${admin.email} revoked MFA for user ${targetUser.email}. All sessions terminated.`
+    });
+
+    res.json({
+      message: `MFA reset successfully for ${targetUser.email}. User can now log in and re-enroll authenticators.`,
+      tokenVersion: updated.tokenVersion
+    });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

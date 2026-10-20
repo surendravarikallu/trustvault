@@ -14,6 +14,28 @@ export async function getUserByEmail(email: string): Promise<DbUser | null> {
   });
 }
 
+export async function getUserByEmailOrUsername(identifier: string): Promise<DbUser | null> {
+  const cleanId = identifier.toLowerCase().trim();
+  if (!cleanId) return null;
+
+  if (cleanId.includes('@')) {
+    return prisma.user.findUnique({
+      where: { email: cleanId }
+    });
+  }
+
+  return prisma.user.findFirst({
+    where: {
+      OR: [
+        { email: cleanId },
+        { email: `${cleanId}@trustvault.local` },
+        { email: { startsWith: `${cleanId}@` } },
+        { name: { equals: cleanId, mode: 'insensitive' } }
+      ]
+    }
+  });
+}
+
 export async function createUser(data: {
   email: string;
   passwordHash: string;
@@ -59,6 +81,29 @@ export async function setUserActive(userId: string, isActive: boolean) {
   });
 }
 
+export async function adminResetPassword(userId: string, passwordHash: string) {
+  return prisma.user.update({
+    where: { id: userId },
+    data: {
+      passwordHash,
+      tokenVersion: { increment: 1 } // Instantly invalidates previous active sessions (L-01)
+    }
+  });
+}
+
+export async function adminResetMfa(userId: string) {
+  return prisma.user.update({
+    where: { id: userId },
+    data: {
+      mfaEnabled: false,
+      mfaSecret: null,
+      mfaBackupCodes: [],
+      mfaLastTimeStep: null,
+      tokenVersion: { increment: 1 } // Instantly invalidates previous active sessions (L-01)
+    }
+  });
+}
+
 export async function lookupUserByExactEmail(email: string) {
   return prisma.user.findUnique({
     where: { email: email.toLowerCase().trim() },
@@ -86,11 +131,24 @@ export async function listAllUsers(page = 1, limit = 50) {
         role: true,
         isActive: true,
         tokenVersion: true,
+        mfaSecret: true,
         createdAt: true
       }
     })
   ]);
-  return { total, page, limit, users };
+
+  const sanitizedUsers = users.map(u => ({
+    id: u.id,
+    email: u.email,
+    name: u.name,
+    role: u.role,
+    isActive: u.isActive,
+    tokenVersion: u.tokenVersion,
+    mfaEnabled: !!u.mfaSecret,
+    createdAt: u.createdAt
+  }));
+
+  return { total, page, limit, users: sanitizedUsers };
 }
 
 export async function getEligibleReviewers(excludeUserId: string) {
@@ -151,6 +209,7 @@ export async function getMfaState(userId: string) {
     select: {
       id: true,
       email: true,
+      name: true,
       role: true,
       tokenVersion: true,
       mfaEnabled: true,
