@@ -106,7 +106,12 @@ export const MfaModal: React.FC<MfaModalProps> = ({
   };
 
   return (
-    <div className="modal-overlay">
+    <div
+      className="modal-overlay"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div className="modal-content" style={{ maxWidth: '480px' }}>
         <div className="modal-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -148,7 +153,7 @@ export const MfaModal: React.FC<MfaModalProps> = ({
           {step === 'initial' && (
             <div>
               <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '16px' }}>
-                Secure your TrustVault account using industry-standard RFC 6238 Time-based One-Time Passwords (TOTP). 
+                Secure your TrustValt account using industry-standard RFC 6238 Time-based One-Time Passwords (TOTP). 
                 Compatible with Google Authenticator, Microsoft Authenticator, Authy, and 1Password.
               </p>
 
@@ -188,6 +193,14 @@ export const MfaModal: React.FC<MfaModalProps> = ({
                   onClick={() => setStep('disable')}
                 >
                   Disable MFA
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={onClose}
+                >
+                  Close
                 </button>
               </div>
             </div>
@@ -269,7 +282,7 @@ export const MfaModal: React.FC<MfaModalProps> = ({
                   <button
                     type="button"
                     className="btn btn-secondary"
-                    onClick={() => setStep('initial')}
+                    onClick={onClose}
                   >
                     Cancel
                   </button>

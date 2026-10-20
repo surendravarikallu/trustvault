@@ -1,5 +1,6 @@
 import React from 'react';
-import { Shield, LogOut, User as UserIcon, Server, Database, KeyRound } from 'lucide-react';
+import { LogOut, User as UserIcon, Server, Database, KeyRound } from 'lucide-react';
+import { TrustVaultLogo } from './TrustVaultLogo';
 import type { User } from '../types';
 
 interface NavbarProps {
@@ -29,19 +30,17 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onSwitchPersona,
           </span>
         </div>
         <div style={{ color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>
-          RFC-Zero-Trust Compliant
+          trustvalt.me · RFC-Zero-Trust Compliant
         </div>
       </div>
 
       {/* Main Enterprise Navigation Bar */}
       <header className="navbar">
         <div className="brand">
-          <div className="brand-icon">
-            <Shield size={16} />
-          </div>
+          <TrustVaultLogo size={24} />
           <div className="brand-title">
-            <span>TrustVault</span>
-            <span className="brand-badge">SECURE CONSOLE</span>
+            <span>TrustValt</span>
+            <span className="brand-badge">trustvalt.me</span>
           </div>
         </div>
 

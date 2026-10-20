@@ -11,3 +11,4 @@ storage/audit_anchor.json
 coverage/
 *.log
 .DS_Store
+.playwright-mcp/

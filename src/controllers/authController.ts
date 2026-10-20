@@ -30,9 +30,10 @@ const RegisterSchema = z.object({
 const LoginSchema = z.object({
   email: z.string().min(1).optional(),
   username: z.string().min(1).optional(),
+  usernameOrEmail: z.string().min(1).optional(),
   password: z.string().min(1),
   enrollMfa: z.boolean().optional()
-}).refine(data => Boolean(data.email || data.username), {
+}).refine(data => Boolean(data.email || data.username || data.usernameOrEmail), {
   message: 'Valid username or email is required.'
 });
 
@@ -86,8 +87,8 @@ export async function login(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const { email, username, password } = parseResult.data;
-  const identifier = (email || username || '').trim();
+  const { email, username, usernameOrEmail, password } = parseResult.data;
+  const identifier = (email || username || usernameOrEmail || '').trim();
   const user = await getUserByEmailOrUsername(identifier);
 
   if (!user || !user.isActive) {

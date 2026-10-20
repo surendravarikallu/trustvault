@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Shield, ArrowRight, Lock, AlertCircle, KeyRound } from 'lucide-react';
+import { ArrowRight, Lock, AlertCircle, KeyRound } from 'lucide-react';
+import { TrustVaultLogo } from './TrustVaultLogo';
 import { apiLogin, apiVerifyLoginMfa } from '../api';
 import type { User } from '../types';
 
@@ -66,27 +67,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
     >
       {/* Brand Header */}
       <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-        <div
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: '46px',
-            height: '46px',
-            background: 'var(--color-primary-subtle)',
-            border: '1px solid var(--color-primary-border)',
-            borderRadius: 'var(--radius-sm)',
-            color: 'var(--color-primary)',
-            marginBottom: '12px'
-          }}
-        >
-          <Shield size={24} />
+        <div style={{ display: 'inline-flex', marginBottom: '14px' }}>
+          <TrustVaultLogo size={48} />
         </div>
         <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '22px', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-primary)', margin: 0 }}>
-          TrustVault Enterprise Security Console
+          TrustValt Enterprise Security Console
         </h1>
         <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '6px' }}>
-          Zero-Trust Access Control & Tamper-Evident HMAC-SHA256 Audit Ledger
+          Zero-Trust Access Control & Tamper-Evident HMAC-SHA256 Audit Ledger • trustvalt.me
         </p>
       </div>
 

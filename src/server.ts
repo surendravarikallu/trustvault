@@ -115,8 +115,10 @@ app.use((_req: Request, res: Response) => {
 
 // 10. Global Error handling middleware
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('Unhandled server exception:', err);
-  const statusCode = err.statusCode || 500;
+  const statusCode = err.statusCode || err.status || 500;
+  if (statusCode >= 500) {
+    console.error('Unhandled server exception:', err);
+  }
   const message = (statusCode === 500 && config.nodeEnv === 'production')
     ? 'Internal server error.'
     : (err.message || 'Internal server error.');

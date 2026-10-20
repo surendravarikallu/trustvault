@@ -9,15 +9,19 @@ import {
   revokeDocumentPermission,
   getGranteesForDocument
 } from '../dal/permissionDal';
-import { getUserByEmail, getEligibleReviewers } from '../dal/userDal';
+import { getUserByEmail, getUserById, getEligibleReviewers } from '../dal/userDal';
 import { logAuditEvent } from '../dal/auditDal';
 
 const GrantPermissionSchema = z.object({
-  targetEmail: z.string().email(),
+  targetEmail: z.string().email().optional(),
+  userEmail: z.string().email().optional(),
+  userId: z.string().optional(),
   permissionLevel: z.nativeEnum(PermissionLevel),
   expiresAt: z.string().optional().nullable(),
   burnOnDownload: z.boolean().optional(),
   previewOnly: z.boolean().optional()
+}).refine(data => Boolean(data.targetEmail || data.userEmail || data.userId), {
+  message: 'Target user email or ID is required.'
 });
 
 export async function grantPermission(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -30,14 +34,17 @@ export async function grantPermission(req: AuthenticatedRequest, res: Response):
     return;
   }
 
-  const { targetEmail, permissionLevel, expiresAt, burnOnDownload, previewOnly } = parseResult.data;
+  const { targetEmail, userEmail, userId, permissionLevel, expiresAt, burnOnDownload, previewOnly } = parseResult.data;
 
   try {
     // 1. Authorization check: Owner-only authority (L-03)
     await loadDocumentFor(user, id, 'manage_permissions', getRequestContext(req));
 
     // 2. Find target user
-    const targetUser = await getUserByEmail(targetEmail);
+    const emailToLookup = targetEmail || userEmail;
+    const targetUser = emailToLookup
+      ? await getUserByEmail(emailToLookup)
+      : (userId ? await getUserById(userId) : null);
     if (!targetUser || !targetUser.isActive) {
       res.status(404).json({ error: 'Target user does not exist or is inactive.' });
       return;

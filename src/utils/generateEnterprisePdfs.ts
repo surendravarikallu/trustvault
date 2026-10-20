@@ -102,7 +102,7 @@ function drawFooter(
     color: COLOR_BORDER,
   });
 
-  page.drawText('TRUSTVAULT ZERO-TRUST CRYPTOGRAPHIC VAULT • AES-256-GCM PROTECTED', {
+  page.drawText('TRUSTVALT ZERO-TRUST CRYPTOGRAPHIC VAULT • trustvalt.me', {
     x: 40,
     y: 32,
     size: 7.5,

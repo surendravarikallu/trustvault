@@ -81,7 +81,8 @@ export async function uploadDocument(req: AuthenticatedRequest, res: Response): 
 
     res.status(201).json({
       message: 'Document uploaded successfully.',
-      document: doc
+      document: doc,
+      ...doc
     });
   } catch (error: any) {
     if (stored?.storedFilename) {
@@ -166,7 +167,7 @@ export async function downloadDocument(req: AuthenticatedRequest, res: Response)
       return;
     }
 
-    const isPreview = req.query.preview === 'true';
+    const isPreview = req.query.preview === 'true' || req.query.is_preview === 'true';
 
     // Enforcement: If shared as Preview-Only, raw attachment downloads are prohibited
     if (activeGrant?.previewOnly && !isPreview) {

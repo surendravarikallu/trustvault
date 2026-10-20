@@ -443,7 +443,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Shield size={12} color="var(--color-emerald)" />
-            <span>Zero-Trust Cryptographic Decryption (Zero Disk Residue)</span>
+            <span>TrustValt Cryptographic Decryption (Zero Disk Residue) • trustvalt.me</span>
           </div>
           <button
             type="button"

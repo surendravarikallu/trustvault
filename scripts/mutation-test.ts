@@ -55,12 +55,16 @@ async function main() {
   }
   */`;
 
-  if (!originalContent.includes(mutationTarget)) {
+  const isCrlf = originalContent.includes('\r\n');
+  const normalizedContent = originalContent.replace(/\r\n/g, '\n');
+
+  if (!normalizedContent.includes(mutationTarget)) {
     console.error('FAIL: Could not locate mutation target in src/dal/documentDal.ts');
     process.exit(1);
   }
 
-  const mutatedContent = originalContent.replace(mutationTarget, mutatedReplacement);
+  const mutatedNormalized = normalizedContent.replace(mutationTarget, mutatedReplacement);
+  const mutatedContent = isCrlf ? mutatedNormalized.replace(/\n/g, '\r\n') : mutatedNormalized;
 
   try {
     fs.writeFileSync(TARGET_FILE, mutatedContent, 'utf-8');

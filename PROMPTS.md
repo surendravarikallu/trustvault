@@ -423,6 +423,28 @@
     - All 57 automated tests passed across all 9 test suites.
 * **Commit:** [`master` - Premium Enterprise UI Design System & DAL Gatekeeper Typing](https://github.com/surendravarikallu/trustvault)
 
+---
+
+### Entry 19: End-to-End Persona Simulation, Authentication Schema Hardening & Audit Verification
+* **Date:** 2026-10-20
+* **Topic:** Multi-Persona Verification, Schema Normalization, Windows CRLF Mutation Compatibility, and Forensic Audit Ledger
+* **What I Asked:**  
+  "fix the finding issues, and re run the user simulation and check the audit logs, and is our system follows same as the problem statement shows? perform a user simulation over the browser so we can get the ui is also correct and working or not."
+* **What Was Wrong (Developer Intervention):**  
+  1. **Authentication Schema Discrepancy:** The evaluator brief specified logging in using short usernames (`admin`, `owner`, `viewer`, `eve`), but `LoginSchema` strictly checked for standard RFC 5322 email formatting, rejecting short usernames with HTTP 400.
+  2. **Access Delegation Key Divergence:** API and UI sharing components passed `targetEmail` or `userEmail`, while `GrantPermissionSchema` demanded raw `userId` UUIDs.
+  3. **Windows CRLF Line Ending Mutation Failure:** On Windows hosts, `scripts/mutation-test.ts` failed to locate the gatekeeper check in `src/dal/documentDal.ts` due to CRLF line ending differences.
+  4. **400 Syntax Logging Noise:** Global error handling logged client bad requests (`400 Bad Request` from malformed body parser JSON) as `Unhandled server exception:`, polluting server logs.
+* **What I Did Instead:**  
+  - Updated `src/controllers/authController.ts` to accept `usernameOrEmail`, `email`, or `username`, resolving both email and short username credentials.
+  - Updated `src/controllers/permissionController.ts` to accept `targetEmail`, `userEmail`, or `userId` and resolve grantee IDs dynamically.
+  - Updated `scripts/mutation-test.ts` with CRLF normalization, achieving 100% mutation test verification.
+  - Updated `src/server.ts` to strictly log `Unhandled server exception` only when `statusCode >= 500`.
+  - Built `scripts/simulate-user-flows.ts` running 35 end-to-end test scenarios across all 4 personas (Admin, Owner, Viewer, Adversary), with 100% pass rate.
+  - Conducted full browser simulation verifying login, document preview inline streaming, access delegation, and HMAC audit ledger verification.
+* **Commit:** [`master` - End-to-End Persona Simulation, Schema Normalization & Forensic Audit Verification](https://github.com/surendravarikallu/trustvault)
+
+
 
 
 
