@@ -2,9 +2,11 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { Request, Response, NextFunction } from 'express';
+import { AuditStatus } from '../dal/types';
 import { config } from '../config';
 import { validateDiskFile } from '../utils/fileSignature';
 import { ThreatScanner } from '../services/threatScanner';
+import { logAuditEvent } from '../dal/auditDal';
 
 // Ensure temporary upload directory exists
 if (!fs.existsSync(config.tempDir)) {
@@ -60,6 +62,18 @@ export async function validateUploadedFile(req: Request, res: Response, next: Ne
     const result = await validateDiskFile(file.path, file.originalname);
     if (!result.valid) {
       await safeUnlink(file.path);
+      const user = (req as any).user;
+      if (user) {
+        await logAuditEvent({
+          action: 'MALICIOUS_UPLOAD_BLOCKED',
+          userId: user.id,
+          userEmail: user.email,
+          status: AuditStatus.DENIED,
+          ipAddress: req.ip || '127.0.0.1',
+          userAgent: (req.headers['user-agent'] || 'Unknown').toString().slice(0, 512),
+          details: `Rejected disguised or invalid file '${file.originalname}': ${result.error}`
+        }).catch(() => {});
+      }
       res.status(400).json({ error: `File validation failed: ${result.error}` });
       return;
     }
@@ -71,6 +85,18 @@ export async function validateUploadedFile(req: Request, res: Response, next: Ne
     const threatScan = await ThreatScanner.scanFile(file.path, file.originalname);
     if (!threatScan.isSafe) {
       await safeUnlink(file.path);
+      const user = (req as any).user;
+      if (user) {
+        await logAuditEvent({
+          action: 'SECURITY_THREAT_REJECTED',
+          userId: user.id,
+          userEmail: user.email,
+          status: AuditStatus.DENIED,
+          ipAddress: req.ip || '127.0.0.1',
+          userAgent: (req.headers['user-agent'] || 'Unknown').toString().slice(0, 512),
+          details: `Security threat scan rejected '${file.originalname}': ${threatScan.details || threatScan.threatType}`
+        }).catch(() => {});
+      }
       res.status(400).json({
         error: `Security threat scan rejected: ${threatScan.details || 'Dangerous payload detected.'}`,
         threatType: threatScan.threatType
