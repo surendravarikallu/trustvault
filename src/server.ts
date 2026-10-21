@@ -30,9 +30,9 @@ app.use(
         baseUri: ["'self'"],
         fontSrc: ["'self'", 'https:', 'data:'],
         formAction: ["'self'"],
-        frameAncestors: ["'self'"],
+        frameAncestors: ["'none'"],
         imgSrc: ["'self'", 'data:', 'blob:', 'https://challenges.cloudflare.com'],
-        objectSrc: ["'self'", 'blob:'],
+        objectSrc: ["'none'"],
         frameSrc: ["'self'", 'blob:', 'https://challenges.cloudflare.com'],
         scriptSrc: [
           "'self'",

@@ -259,4 +259,101 @@ describe('Hardened Attack Vectors Defense Suite (Threats T-48 to T-53)', () => {
       expect(loaded.getKeywords()).toContain('TRUSTVAULT_FORENSIC_TAG');
     });
   });
+
+  // --- SECURITY HEADERS & PREVIEW/DOWNLOAD AUDIT PARITY ---
+  describe('Security Headers & Preview/Download Audit Parity', () => {
+    it('HDR-01: Response contains strict Content-Security-Policy with object-src none, frame-ancestors none, script-src-attr none', async () => {
+      const res = await request(app).get('/api/health');
+      const csp = res.headers['content-security-policy'];
+
+      expect(csp).toBeDefined();
+      expect(csp).toContain("default-src 'self'");
+      expect(csp).toContain("object-src 'none'");
+      expect(csp).toContain("frame-ancestors 'none'");
+      expect(csp).toContain("script-src-attr 'none'");
+      expect(csp).toContain("base-uri 'self'");
+    });
+
+    it('HDR-02: Document download response strictly asserts X-Content-Type-Options: nosniff', async () => {
+      const res = await request(app)
+        .get(`/api/documents/${testDoc.id}/download`)
+        .set('Authorization', `Bearer ${ownerToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.headers['x-content-type-options']).toBe('nosniff');
+    });
+
+    it('AUD-PRV-01: Both preview and raw download return 404 to an unshared user and both log ACCESS_DENIED audit rows', async () => {
+      // Create a stranger user with no access to testDoc
+      const stranger = await prisma.user.upsert({
+        where: { email: 'stranger.audit@trustvault.local' },
+        update: {},
+        create: {
+          email: 'stranger.audit@trustvault.local',
+          name: 'Stranger Audit',
+          passwordHash: '$2b$10$abcdefghijklmnopqrstuvwxyzABCDEF',
+          role: 'VIEWER',
+          tokenVersion: 1
+        }
+      });
+      const strangerToken = jwt.sign(
+        { userId: stranger.id, tokenVersion: 1 },
+        config.jwtSecret,
+        { expiresIn: '1h', algorithm: 'HS256' }
+      );
+
+      // Probe raw download
+      const dlRes = await request(app)
+        .get(`/api/documents/${testDoc.id}/download`)
+        .set('Authorization', `Bearer ${strangerToken}`);
+      expect(dlRes.status).toBe(404);
+
+      // Probe preview route
+      const prvRes = await request(app)
+        .get(`/api/documents/${testDoc.id}/download?preview=true`)
+        .set('Authorization', `Bearer ${strangerToken}`);
+      expect(prvRes.status).toBe(404);
+
+      // Verify audit rows were recorded for both probes
+      const auditRows = await prisma.auditLog.findMany({
+        where: {
+          userId: stranger.id,
+          documentId: testDoc.id,
+          action: 'ACCESS_DENIED'
+        }
+      });
+
+      expect(auditRows.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('AUD-PRV-02: Both preview and raw download record DOCUMENT_DOWNLOAD audit event with recipient tracking', async () => {
+      const initialLogs = await prisma.auditLog.count({
+        where: {
+          documentId: testDoc.id,
+          action: 'DOCUMENT_DOWNLOAD_STARTED'
+        }
+      });
+
+      // 1. In-browser preview fetch
+      const prvRes = await request(app)
+        .get(`/api/documents/${testDoc.id}/download?preview=true`)
+        .set('Authorization', `Bearer ${ownerToken}`);
+      expect(prvRes.status).toBe(200);
+
+      // 2. Binary download fetch
+      const dlRes = await request(app)
+        .get(`/api/documents/${testDoc.id}/download`)
+        .set('Authorization', `Bearer ${ownerToken}`);
+      expect(dlRes.status).toBe(200);
+
+      const postLogs = await prisma.auditLog.count({
+        where: {
+          documentId: testDoc.id,
+          action: 'DOCUMENT_DOWNLOAD_STARTED'
+        }
+      });
+
+      expect(postLogs).toBe(initialLogs + 2);
+    });
+  });
 });

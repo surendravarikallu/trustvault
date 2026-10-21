@@ -80,7 +80,12 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
           docData = { url: blobUrl };
         }
 
-        const loadingTask = pdfjsLib.getDocument(docData);
+        const loadingTask = pdfjsLib.getDocument({
+          ...docData,
+          isEvalSupported: false,
+          disableFontFace: true,
+          enableXfa: false
+        });
         const loadedPdf = await loadingTask.promise;
 
         if (!isCancelled) {
@@ -126,7 +131,8 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
 
         const renderContext = {
           canvasContext: ctx,
-          viewport
+          viewport,
+          annotationMode: 0 // disables annotation rendering
         };
 
         await page.render(renderContext).promise;

@@ -465,7 +465,20 @@ TrustVault handles sensitive enterprise documents under a strict **Zero-Trust & 
   - **PDF Metadata Fingerprinting**: Sets PDF dictionary fields (`Author`, `Keywords`, `Producer`, `Subject`) with cryptographically verifiable trace identifiers and recipient email tags.
   - **Browser Print Shield**: `@media print` CSS hides all document content (`body * { visibility: hidden !important; }`) and projects a full-screen violation warning notice when printing or exporting via browser.
   - **Selection & Context Menu Guards**: Disables right-click context menu (`onContextMenu={(e) => e.preventDefault()}`) and text highlighting (`user-select: none !important`) on sensitive preview viewports.
-* **Automated Test:** `tests/hardened-attacks.test.ts` (`STEGO-01`, `STEGO-02`).
+#### T-54: Cross-Site Scripting (XSS) — Mitigated, Not Eliminated (CWE-79)
+* **Attacker Scenario:** An authenticated adversary or rogue owner uploads a document or injects payloads (`<img src=x onerror=...>`, `<script>`, or weaponized PDF streams) into document metadata (title, category, description, original filename), user profiles, or audit log details, attempting to execute arbitrary JavaScript in the victim's origin upon view, preview, or administration.
+* **Control Boundaries & Realistic Mitigations:**
+  - **DOM Sinks & React Auto-Escaping:** Dynamic metadata (document titles, categories, descriptions, filenames, user names, audit details) is rendered strictly through React JSX text bindings. Characters like `<`, `>`, `&`, `"`, `'` are converted into plain text DOM nodes, preventing inline DOM script execution. Frontend sink audit confirms zero usage of `dangerouslySetInnerHTML`, `innerHTML`, `outerHTML`, `eval()`, or `new Function()`.
+  - **Content Security Policy (CSP):** `object-src 'none'` blocks plugins/ActiveX, `frame-ancestors 'none'` blocks clickjacking/framing, and `script-src-attr 'none'` prevents inline event-handler attributes (`onerror`, `onload`). *Limitation:* `script-src` includes `'unsafe-inline'` to support third-party Cloudflare scripts; it does not eliminate script execution if an attacker discovers an injection point, and `script-src-attr 'none'` does not block `<a href="javascript:...">` (which depends on `script-src`).
+  - **MIME & Download Headers:** `X-Content-Type-Options: nosniff` is enforced globally and on all file downloads, stopping browsers from MIME-sniffing non-executable files into HTML/JS. Downloads default to `Content-Disposition: attachment; filename=...`.
+  - **File Type Whitelist:** Rejects `.html`, `.svg`, and `.js` formats. *Limitation:* Text files (`.txt`) are checked only for null bytes; `.docx` and `.xlsx` are ZIP-based OOXML containers checked for magic bytes and macro streams (`vbaProject.bin`). CSV formula injection (`=cmd|...`) is an accepted risk if CSV data is exported to desktop spreadsheet software.
+  - **PDF Byte Scanner Speed-Bump:** Basic byte scanning for `/JavaScript` and `/JS` streams in uploaded PDFs is a heuristic filter that can be bypassed by hex-escaped names (`/J#61vaScript`) or compressed object streams. It is not relied upon as a primary security control.
+  - **In-Browser PDF.js Preview Surface:** Rendering PDFs via Mozilla PDF.js parses untrusted byte streams in the host page origin. To minimize this surface, `pdfjs-dist` is pinned to version `6.4.299` (patched against font-parsing CVE-2024-4367), `isEvalSupported: false` is enforced, `disableFontFace: true` is set, and annotation layers are disabled (`annotationMode: 0`). Preview requests follow the identical authorization and audit logging path as downloads. *Residual Risk:* Cutting preview entirely eliminates origin parser risk; maintaining preview accepts the risk of zero-day vulnerabilities in the client-side PDF parser.
+  - **Cookie HttpOnly Scope:** `HttpOnly` on `__Host-trustvault_token` limits one consequence of XSS by preventing client script from reading the session cookie via `document.cookie`. It does **not** stop in-origin malicious scripts from issuing authenticated fetch calls against the API using the victim's session.
+* **Automated Tests:**
+  - `HDR-01` & `HDR-02` in `tests/hardened-attacks.test.ts` (Asserts CSP directives and `nosniff`).
+  - `AUD-PRV-01` & `AUD-PRV-02` in `tests/hardened-attacks.test.ts` (Verifies preview/download authorization and audit parity).
+  - `scripts/verify-xss-playwright.ts` (Playwright E2E test verifying that `<img src=x onerror=window.__xss=1>` in document, user, and audit records never executes in any view).
 
 ---
 
@@ -482,8 +495,8 @@ TrustVault handles sensitive enterprise documents under a strict **Zero-Trust & 
 | **G: Multi-Factor Authentication** | `T-32`, `T-41` | `tests/mfa-totp.test.ts` | 9 | 1 |
 | **H: Disaster Recovery & Encryption** | `T-34`, `T-35` | `tests/backup-disaster-recovery.test.ts` | 6 | 2 |
 | **I: Ephemeral Sharing & Governance** | `T-43` to `T-47` | `tests/governance-and-sharing.test.ts` | 5 | 3 |
-| **J: Advanced Hardened Attack Vectors** | `T-48` to `T-53` | `tests/hardened-attacks.test.ts` | 12 | 6 |
-| **TOTALS** | **53 Modeled Threats (T-01 to T-53)** | **11 Automated Test Suites + 2 Scripts** | **72 Tests** | **41 Scenarios** |
+| **J: Advanced Hardened Attack Vectors** | `T-48` to `T-54` | `tests/hardened-attacks.test.ts`, `scripts/verify-xss-playwright.ts` | 16 | 7 |
+| **TOTALS** | **54 Modeled Threats (T-01 to T-54)** | **11 Automated Test Suites + 3 Scripts** | **76 Tests** | **42 Scenarios** |
 
 
 
