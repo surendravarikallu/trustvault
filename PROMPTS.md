@@ -518,7 +518,7 @@
   4. **Isolated Test Database & Automated Verification**:
      - Configured Prisma and audit anchors to use a dedicated test database (`trustvault_test`) and `storage/audit_anchor_test.json`, ensuring automated tests never pollute the production audit ledger.
      - Added comprehensive tests in `tests/hardened-attacks.test.ts`: `AUTH-CK-01` (zero body token), `AUTH-CK-02` (single `__Host-` cookie with HttpOnly, Secure, Path=/, no Domain), `AUTH-CK-03` (Bearer fallback rejected), `AUTH-CK-04` (legacy cookie rejected), `CSRF-01` (cross-origin POST rejected with 403), `CORS-01` (ACAO absent), `CSP-01` (pinned CSP), and `PRV-01` (`?preview=true` behaves like plain download).
-* **Commit:** [`83a1f9e` - Single-Channel `__Host-` Cookie Auth, Preview Surface Removal & Origin Hardening](https://github.com/surendravarikallu/trustvault/commit/83a1f9e)
+* **Commit:** [`97eae44` - Single-Channel `__Host-` Cookie Auth, Preview Surface Removal & Origin Hardening](https://github.com/surendravarikallu/trustvault/commit/97eae44)
 
 
 
