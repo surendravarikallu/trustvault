@@ -16,10 +16,8 @@ import { fetchDocuments, downloadDocument, deleteDocument, apiLogin, apiLogout, 
 type Tab = 'documents' | 'audit' | 'users';
 
 export const App: React.FC = () => {
-  const [user, setUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('tv_user');
-    return saved ? JSON.parse(saved) : null;
-  });
+  const [user, setUser] = useState<User | null>(null);
+  const [isHydrating, setIsHydrating] = useState<boolean>(true);
 
   const [activeTab, setActiveTab] = useState<Tab>('documents');
   const [documents, setDocuments] = useState<VaultDocument[]>([]);
@@ -32,25 +30,34 @@ export const App: React.FC = () => {
   const [historyDoc, setHistoryDoc] = useState<VaultDocument | null>(null);
   const [isMfaOpen, setIsMfaOpen] = useState(false);
 
-  // 2FA Prompt Banner state
-  const [mfaBannerDismissed, setMfaBannerDismissed] = useState<boolean>(() => {
-    return sessionStorage.getItem('tv_mfa_prompt_dismissed') === 'true';
-  });
+  // 2FA Prompt Banner in-memory state
+  const [mfaBannerDismissed, setMfaBannerDismissed] = useState<boolean>(false);
 
   // Toast notification state
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  // Verify active session on boot
+  // Verify active session on boot purely via __Host- cookie without localStorage
   useEffect(() => {
+    // Proactively clear any legacy client storage to guarantee DevTools Application tab is completely empty
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+    } catch {
+      // ignore
+    }
+
     apiMe()
       .then((data) => {
-        setUser(data.user);
-        localStorage.setItem('tv_user', JSON.stringify(data.user));
+        if (data && data.user) {
+          setUser(data.user);
+        }
       })
       .catch(() => {
         // Session invalid or not logged in
         setUser(null);
-        localStorage.removeItem('tv_user');
+      })
+      .finally(() => {
+        setIsHydrating(false);
       });
   }, []);
 
@@ -68,7 +75,6 @@ export const App: React.FC = () => {
   const handleLoginSuccess = (newUser: User) => {
     setUser(newUser);
     setActiveTab('documents');
-    localStorage.setItem('tv_user', JSON.stringify(newUser));
     showToast('success', `Signed in as ${newUser.name} (${newUser.role})`);
   };
 
@@ -81,20 +87,22 @@ export const App: React.FC = () => {
     setUser(null);
     setDocuments([]);
     setActiveTab('documents');
-    localStorage.removeItem('tv_user');
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+    } catch {
+      // ignore
+    }
     showToast('success', 'Logged out.');
   };
 
   const handleDismissMfaBanner = () => {
-    sessionStorage.setItem('tv_mfa_prompt_dismissed', 'true');
     setMfaBannerDismissed(true);
   };
 
   const handleMfaStatusChange = () => {
     if (user) {
-      const updatedUser = { ...user, mfaEnabled: true };
-      setUser(updatedUser);
-      localStorage.setItem('tv_user', JSON.stringify(updatedUser));
+      setUser({ ...user, mfaEnabled: true });
     }
     showToast('success', 'MFA status updated. Account is now secured with TOTP.');
   };
@@ -153,16 +161,34 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleDelete = async (docId: string) => {
-    if (!window.confirm('Are you sure you want to soft-delete this document?')) return;
+  const [deleteConfirmDocId, setDeleteConfirmDocId] = useState<string | null>(null);
+
+  const handleDelete = (docId: string) => {
+    setDeleteConfirmDocId(docId);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteConfirmDocId) return;
+    const targetId = deleteConfirmDocId;
+    setDeleteConfirmDocId(null);
     try {
-      await deleteDocument(docId);
+      await deleteDocument(targetId);
       showToast('success', 'Document soft-deleted.');
       await loadDocuments();
     } catch (err: any) {
       showToast('error', err.message);
     }
   };
+
+  if (isHydrating) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-app)', color: 'var(--text-muted)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
+          <span>Validating Vault Session...</span>
+        </div>
+      </div>
+    );
+  }
 
   if (!user) {
     return <LoginView onLoginSuccess={handleLoginSuccess} />;
@@ -342,6 +368,45 @@ export const App: React.FC = () => {
         onClose={() => setIsMfaOpen(false)}
         onMfaStatusChange={handleMfaStatusChange}
       />
+
+      {/* Styled Delete Confirmation Modal */}
+      {deleteConfirmDocId && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '420px' }}>
+            <div className="modal-header">
+              <span style={{ fontWeight: 600, fontSize: '13px' }}>Confirm Soft Delete</span>
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmDocId(null)}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+              >
+                &times;
+              </button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
+                Are you sure you want to soft-delete this document? It will be immediately inaccessible in your active vault.
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setDeleteConfirmDocId(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={confirmDelete}
+              >
+                Confirm Soft Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast Notification */}
       {toast && (

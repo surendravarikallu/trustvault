@@ -7,6 +7,7 @@ import {
   UserPlus,
   Key,
   ShieldAlert,
+  AlertTriangle,
   X,
   Wand2,
   Search
@@ -41,11 +42,19 @@ export const UserDirectoryView: React.FC<UserDirectoryViewProps> = ({ currentUse
   const [createRole, setCreateRole] = useState<Role>('VIEWER');
   const [isCreating, setIsCreating] = useState(false);
 
-  // Reset Password Modal State
   const [isResetOpen, setIsResetOpen] = useState(false);
   const [resetTargetUser, setResetTargetUser] = useState<User | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [isResetting, setIsResetting] = useState(false);
+
+  // Custom Confirmation Dialog State
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    onConfirm: () => Promise<void> | void;
+    isDestructive?: boolean;
+  } | null>(null);
 
   useEffect(() => {
     loadUsers();
@@ -75,19 +84,24 @@ export const UserDirectoryView: React.FC<UserDirectoryViewProps> = ({ currentUse
     }
   };
 
-  const handleDeactivate = async (userId: string, name: string) => {
-    if (!window.confirm(`Deactivate user ${name}? This terminates all active sessions immediately.`)) {
-      return;
-    }
-    setError(null);
-    setMsg(null);
-    try {
-      await deactivateUser(userId);
-      setMsg(`Deactivated user ${name}. All active JWTs blocked.`);
-      await loadUsers();
-    } catch (err: any) {
-      setError(err.message);
-    }
+  const handleDeactivate = (userId: string, name: string) => {
+    setConfirmDialog({
+      title: `Deactivate User: ${name}`,
+      message: `Are you sure you want to deactivate ${name}? This terminates all active sessions immediately and blocks all incoming authentication requests.`,
+      confirmLabel: 'Deactivate Account',
+      isDestructive: true,
+      onConfirm: async () => {
+        setError(null);
+        setMsg(null);
+        try {
+          await deactivateUser(userId);
+          setMsg(`Deactivated user ${name}. All active JWTs blocked.`);
+          await loadUsers();
+        } catch (err: any) {
+          setError(err.message);
+        }
+      }
+    });
   };
 
   const generateStrongPassword = () => {
@@ -154,20 +168,24 @@ export const UserDirectoryView: React.FC<UserDirectoryViewProps> = ({ currentUse
     }
   };
 
-  const handleResetMfa = async (user: User) => {
-    if (!window.confirm(`Emergency Reset 2FA for ${user.name} (${user.email})?\n\nThis will remove their TOTP secret, revoke active sessions, and allow them to log in with password only until 2FA is re-enrolled.`)) {
-      return;
-    }
-
-    setError(null);
-    setMsg(null);
-    try {
-      await apiAdminResetMfa(user.id);
-      setMsg(`Emergency 2FA reset completed for ${user.email}. Active sessions revoked.`);
-      await loadUsers();
-    } catch (err: any) {
-      setError(err.message);
-    }
+  const handleResetMfa = (user: User) => {
+    setConfirmDialog({
+      title: `Emergency Reset 2FA: ${user.name}`,
+      message: `Emergency Reset 2FA for ${user.name} (${user.email})? This removes their TOTP secret, increments tokenVersion to revoke all active sessions, and allows password-only login until 2FA is re-enrolled.`,
+      confirmLabel: 'Reset 2FA Secret',
+      isDestructive: true,
+      onConfirm: async () => {
+        setError(null);
+        setMsg(null);
+        try {
+          await apiAdminResetMfa(user.id);
+          setMsg(`Emergency 2FA reset completed for ${user.email}. Active sessions revoked.`);
+          await loadUsers();
+        } catch (err: any) {
+          setError(err.message);
+        }
+      }
+    });
   };
 
   const filteredUsers = users.filter((u) => {
@@ -620,6 +638,52 @@ export const UserDirectoryView: React.FC<UserDirectoryViewProps> = ({ currentUse
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Styled React Confirmation Modal */}
+      {confirmDialog && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '440px' }}>
+            <div className="modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <AlertTriangle size={16} color="#f87171" />
+                <span style={{ fontWeight: 600, fontSize: '13px' }}>{confirmDialog.title}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setConfirmDialog(null)}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
+                {confirmDialog.message}
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setConfirmDialog(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={async () => {
+                  const action = confirmDialog.onConfirm;
+                  setConfirmDialog(null);
+                  await action();
+                }}
+              >
+                {confirmDialog.confirmLabel || 'Confirm Action'}
+              </button>
+            </div>
           </div>
         </div>
       )}
