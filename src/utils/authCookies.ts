@@ -1,22 +1,20 @@
 import { Response } from 'express';
 
 export function setAuthCookies(res: Response, token: string): void {
-  const isProd = process.env.NODE_ENV === 'production';
-  const cookieOpts = {
+  res.cookie('__Host-trustvault_token', token, {
     httpOnly: true,
-    secure: isProd,
-    sameSite: 'lax' as const,
+    secure: true,
+    sameSite: 'lax',
     maxAge: 8 * 60 * 60 * 1000, // 8 hours
     path: '/'
-  };
-
-  if (isProd) {
-    res.cookie('__Host-trustvault_token', token, cookieOpts);
-  }
-  res.cookie('trustvault_token', token, cookieOpts);
+  });
 }
 
 export function clearAuthCookies(res: Response): void {
-  res.clearCookie('__Host-trustvault_token', { path: '/' });
-  res.clearCookie('trustvault_token', { path: '/' });
+  res.clearCookie('__Host-trustvault_token', {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+    path: '/'
+  });
 }

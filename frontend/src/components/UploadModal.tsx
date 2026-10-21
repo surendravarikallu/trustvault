@@ -5,14 +5,12 @@ import { uploadDocument } from '../api';
 interface UploadModalProps {
   isOpen: boolean;
   onClose: () => void;
-  token: string;
   onUploadSuccess: () => void;
 }
 
 export const UploadModal: React.FC<UploadModalProps> = ({
   isOpen,
   onClose,
-  token,
   onUploadSuccess
 }) => {
   const [file, setFile] = useState<File | null>(null);
@@ -41,7 +39,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
       formData.append('description', description.trim());
       formData.append('category', category);
 
-      await uploadDocument(formData, token);
+      await uploadDocument(formData);
       onUploadSuccess();
       onClose();
     } catch (err: any) {
@@ -136,7 +134,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                 style={{ padding: '8px' }}
               />
               <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '4px' }}>
-                Zero-Trust Signature Inspection: Permitted formats (.pdf, .png, .jpg, .docx, .xlsx, .txt). Windows PE (.exe/.dll) and Linux ELF binaries are rejected via magic-byte buffer analysis.
+                Zero-Trust Signature Inspection: Permitted formats (.pdf, .png, .jpg, .txt). Windows PE (.exe/.dll), Linux ELF binaries, and zip/archive formats (.docx, .xlsx, .zip) are strictly rejected.
               </div>
             </div>
           </div>

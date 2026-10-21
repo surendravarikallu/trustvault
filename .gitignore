@@ -8,6 +8,7 @@ storage/temp/*
 storage/backups/*
 !storage/backups/.gitkeep
 storage/audit_anchor.json
+storage/audit_anchor_test.json
 coverage/
 *.log
 .DS_Store

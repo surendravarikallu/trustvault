@@ -259,7 +259,6 @@ export async function verifyLoginMFA(req: Request, res: Response): Promise<void>
   setAuthCookies(res, token);
 
   res.json({
-    token,
     user: {
       id: mfaState.id,
       email: mfaState.email,
@@ -386,7 +385,6 @@ export async function confirmEnrollMFA(req: Request, res: Response): Promise<voi
 
   res.json({
     message: 'Two-factor authentication successfully enabled!',
-    token,
     user: {
       id: dbUser!.id,
       email: dbUser!.email,

@@ -377,12 +377,13 @@ TrustVault handles sensitive enterprise documents under a strict **Zero-Trust & 
   - Any subsequent probe by that user encounters `activeGrant = null` in the Single Gatekeeper DAL, returning an immediate, existence-shielded `HTTP 404 Not Found`.
 * **Automated Test:** `BOD-01` in `tests/governance-and-sharing.test.ts`.
 
-#### T-44: Unauthorized Offline Binary Exfiltration of In-Browser Review Documents (CWE-200 / CWE-284)
-* **Attacker Scenario:** A recipient granted `READ` access to inspect confidential personnel or financial records downloads the raw binary file to their unmanaged local device, enabling unauthorized permanent offline retention, unauthorized file distribution, or loss of custody.
+#### T-44: Elimination of In-Browser Preview Attack Surface & Strict Download-Only Model (CWE-200 / CWE-284)
+* **Attacker Scenario:** An attacker leverages in-browser document parsing (e.g. PDF.js canvas rendering) to trigger parser vulnerabilities (such as CVE-2024-4367 font script execution) inside the page origin, or attempts to stream unaudited content by abusing preview query parameters.
 * **Defense Mechanism:**
-  - **In-Browser Ephemeral Preview Only Enforcement:** When a grant is flagged with `previewOnly: true`, standard binary download requests (`GET /api/documents/:id/download`) are explicitly rejected by the controller with `HTTP 403 Forbidden` (`"This document was shared with In-Browser Preview Only restrictions. Binary file download is prohibited."`).
-  - Read access is permitted exclusively when the query specifies `?preview=true` or `?is_preview=true`, which strictly responds with `Content-Disposition: inline` and appropriate MIME types. This streams decrypted content directly into the secure browser memory context without saving to disk or allowing raw download.
-* **Automated Test:** `PRV-01` in `tests/governance-and-sharing.test.ts`.
+  - **Complete Elimination of Preview Engine:** TrustVault eliminates `pdfjs-dist` and client-side preview modals entirely. The vault operates strictly on an audited, download-only paradigm.
+  - **Enforced Content-Disposition:** All document delivery routes strictly enforce `Content-Disposition: attachment; filename="..."` and `Content-Type: application/octet-stream`. Query parameters such as `?preview=true` are neutralized and behave identically to raw downloads.
+  - **Atomic Quota & Audit Enforcement:** Every download probe unconditionally executes access evaluation via the single DAL gatekeeper, decrements multi-download quotas, executes NIST crypto-shredding on exhaustion, and commits `DOCUMENT_DOWNLOAD_STARTED` and `DOCUMENT_DOWNLOADED_QUOTA_REMAINING` audit rows to the HMAC-SHA256 ledger.
+* **Automated Test:** `tests/hardened-attacks.test.ts` (`PRV-01`, `AUD-PRV-01`), `tests/governance-and-sharing.test.ts` (`PRV-01`).
 
 #### T-45: Unauthorized Identity Provisioning & Role Elevation on Account Creation (CWE-269 / CWE-284)
 * **Attacker Scenario:** An unauthenticated network adversary or an unprivileged user invokes `POST /api/admin/users` attempting to provision arbitrary administrative accounts, bypass self-registration role restrictions, or inject unverified identities.
@@ -411,24 +412,22 @@ TrustVault handles sensitive enterprise documents under a strict **Zero-Trust & 
 
 ---
 
-### Category J: Advanced Defenses & Hardened Attack Vectors (T-48 to T-53)
+### Category J: Advanced Defenses & Hardened Attack Vectors (T-48 to T-55)
 
-#### T-48: Cross-Site Request Forgery (CSRF) via Cookie Sessions (CWE-352)
-* **Attacker Scenario:** An authenticated victim user who logged in via browser has an active, secure `HttpOnly` session cookie (`__Host-trustvault_token` / `trustvault_token`). The user is lured to an attacker-controlled website (`evil.com`), which executes a background cross-origin `POST`, `PUT`, or `DELETE` against TrustVault endpoints (e.g. deleting documents, delegating permissions, changing roles).
+#### T-48: Cross-Site Request Forgery (CSRF) & Origin Validation (CWE-352)
+* **Attacker Scenario:** An authenticated victim user who logged in via browser has an active session cookie. The user is lured to an attacker-controlled website (`https://evil.example`), which triggers background cross-origin mutating requests (`POST`, `PUT`, `DELETE`, `PATCH`) against TrustVault endpoints (e.g. deleting documents, delegating permissions, changing roles).
 * **Defense Mechanism:**
   - Dedicated `csrfProtection` middleware (`src/middleware/csrf.ts`) inspects all state-mutating HTTP methods (`POST`, `PUT`, `DELETE`, `PATCH`).
-  - When a request relies on Cookie authentication without an `Authorization: Bearer` header:
-    1. **Custom Client Header Enforcement:** Enforces presence of custom client header `X-TrustVault-Client: 1` (or `X-Requested-With`). Web browsers strictly prohibit cross-origin requests from injecting arbitrary custom headers unless explicitly preflighted and permitted by CORS.
-    2. **Origin & Referer Whitelist Validation:** Evaluates `Origin` and `Referer` headers against the server's host header and loopback interfaces (`127.0.0.1`, `localhost`). Untrusted third-party origins are rejected with `HTTP 403 Forbidden` (`"CSRF validation failed: Cross-origin request rejected."`).
-    3. **Automated Client Safety:** API callers authenticating solely via `Authorization: Bearer` (e.g., CLI tools, microservice pipelines, automated Jest suites) bypass CSRF checking as web browsers never automatically attach Bearer credentials across origins.
-* **Automated Test:** `tests/hardened-attacks.test.ts` (`CSRF-01`, `CSRF-02`, `CSRF-03`).
+  - **Mandatory Origin Header Check**: If an `Origin` (or `Referer`) header is present on any mutating request, it MUST match the request `Host` or trusted loopback/domain origins. Any cross-origin mutating request (`Origin: https://evil.example`) is strictly rejected with `HTTP 403 Forbidden` (`"CSRF validation failed: Cross-origin request rejected."`) and zero state mutation occurs.
+  - **Zero CORS**: CORS middleware is completely removed from the Express pipeline. No `Access-Control-Allow-Origin` or `Access-Control-Allow-Credentials` headers are ever reflected to third-party callers.
+* **Automated Test:** `tests/hardened-attacks.test.ts` (`CSRF-01`, `CSRF-02`, `CORS-01`).
 
 #### T-49: Denial of Service / Event Loop Starvation via Dynamic PDF Cryptographic Transform Bursts (CWE-400)
-* **Attacker Scenario:** An authorized grantee repeatedly requests download or preview of extremely large, deeply nested, or 1,000-page PDF files configured with dynamic forensic watermarking or OTP password encryption. Synchronous PDF AST parsing and vector rendering monopolizes Node.js event loop threads, spiking p95/p99 response latency and causing service degradation or OOM crashes for concurrent users.
+* **Attacker Scenario:** An authorized grantee repeatedly requests download of extremely large, deeply nested, or 1,000-page PDF files configured with dynamic forensic watermarking or OTP password encryption. Synchronous PDF AST parsing and vector rendering monopolizes Node.js event loop threads, spiking p95/p99 response latency and causing service degradation or OOM crashes for concurrent users.
 * **Defense Mechanism:**
   - **Payload Size Threshold Bounding:** `MAX_JIT_PDF_SIZE_BYTES = 25MB` strictly rejects dynamic in-memory JIT watermarking and password encryption on files larger than 25MB.
   - **Page Execution Ceiling:** `MAX_JIT_WATERMARK_PAGES = 150` limits forensic diagonal vector rendering to the first 150 pages, ensuring worst-case per-request CPU time remains under 200ms.
-  - **Asynchronous Concurrency Semaphore:** `acquirePdfSlot()` caps simultaneous CPU-bound PDF operations at 5 concurrent worker slots. Excess burst requests are queued with a timeout rather than starving core event loop routines (authentication, health checks, database queries).
+  - **Asynchronous Concurrency Semaphore:** `acquirePdfSlot()` caps simultaneous CPU-bound PDF operations at 5 concurrent worker slots. Excess burst requests are queued with a timeout rather than starving core event loop routines.
 * **Automated Test:** `tests/hardened-attacks.test.ts` (`DOS-PDF-01`, `DOS-PDF-02`).
 
 #### T-50: Unauthenticated Distributed Cache Store & Lateral Redis Pivot (CWE-306)
@@ -459,26 +458,34 @@ TrustVault handles sensitive enterprise documents under a strict **Zero-Trust & 
 * **Automated Test:** `tests/hardened-attacks.test.ts` (`HKDF-01`).
 
 #### T-53: Analog Hole, Display Scraping, Raw Browser Printing & Attribution Evasion (CWE-200 / CWE-592)
-* **Attacker Scenario:** An authorized grantee opens an in-browser preview or watermarked PDF, then uses browser `Ctrl+P` (Print to PDF), screen selection copy-paste, or photographic capture of the screen, attempting to crop out visible watermarks and exfiltrate data without attribution.
+* **Attacker Scenario:** An authorized grantee downloads a watermarked PDF, then uses browser `Ctrl+P` (Print to PDF), screen selection copy-paste, or photographic capture of the screen, attempting to crop out visible watermarks and exfiltrate data without attribution.
 * **Defense Mechanism:**
   - **Steganographic Provenance**: Embeds imperceptible zero-width Unicode characters (`\u200B` and `\u200C`) encoding the recipient's identity, timestamp, and unique trace hash into document metadata and strings.
   - **PDF Metadata Fingerprinting**: Sets PDF dictionary fields (`Author`, `Keywords`, `Producer`, `Subject`) with cryptographically verifiable trace identifiers and recipient email tags.
   - **Browser Print Shield**: `@media print` CSS hides all document content (`body * { visibility: hidden !important; }`) and projects a full-screen violation warning notice when printing or exporting via browser.
   - **Selection & Context Menu Guards**: Disables right-click context menu (`onContextMenu={(e) => e.preventDefault()}`) and text highlighting (`user-select: none !important`) on sensitive preview viewports.
-#### T-54: Cross-Site Scripting (XSS) — Mitigated, Not Eliminated (CWE-79)
-* **Attacker Scenario:** An authenticated adversary or rogue owner uploads a document or injects payloads (`<img src=x onerror=...>`, `<script>`, or weaponized PDF streams) into document metadata (title, category, description, original filename), user profiles, or audit log details, attempting to execute arbitrary JavaScript in the victim's origin upon view, preview, or administration.
-* **Control Boundaries & Realistic Mitigations:**
+* **Automated Test:** `tests/hardened-attacks.test.ts` (`STEGO-01`, `STEGO-02`).
+
+#### T-54: Cross-Site Scripting (XSS) — Hardened & Defense-in-Depth (CWE-79)
+* **Attacker Scenario:** An authenticated adversary or rogue owner uploads a document or injects payloads (`<img src=x onerror=...>`, `<script>`, or weaponized streams) into document metadata, user profiles, or audit log details, attempting to execute arbitrary JavaScript in the victim's origin.
+* **Control Boundaries & Hardened Defenses:**
   - **DOM Sinks & React Auto-Escaping:** Dynamic metadata (document titles, categories, descriptions, filenames, user names, audit details) is rendered strictly through React JSX text bindings. Characters like `<`, `>`, `&`, `"`, `'` are converted into plain text DOM nodes, preventing inline DOM script execution. Frontend sink audit confirms zero usage of `dangerouslySetInnerHTML`, `innerHTML`, `outerHTML`, `eval()`, or `new Function()`.
-  - **Content Security Policy (CSP):** `object-src 'none'` blocks plugins/ActiveX, `frame-ancestors 'none'` blocks clickjacking/framing, and `script-src-attr 'none'` prevents inline event-handler attributes (`onerror`, `onload`). *Limitation:* `script-src` includes `'unsafe-inline'` to support third-party Cloudflare scripts; it does not eliminate script execution if an attacker discovers an injection point, and `script-src-attr 'none'` does not block `<a href="javascript:...">` (which depends on `script-src`).
-  - **MIME & Download Headers:** `X-Content-Type-Options: nosniff` is enforced globally and on all file downloads, stopping browsers from MIME-sniffing non-executable files into HTML/JS. Downloads default to `Content-Disposition: attachment; filename=...`.
-  - **File Type Whitelist:** Rejects `.html`, `.svg`, and `.js` formats. *Limitation:* Text files (`.txt`) are checked only for null bytes; `.docx` and `.xlsx` are ZIP-based OOXML containers checked for magic bytes and macro streams (`vbaProject.bin`). CSV formula injection (`=cmd|...`) is an accepted risk if CSV data is exported to desktop spreadsheet software.
-  - **PDF Byte Scanner Speed-Bump:** Basic byte scanning for `/JavaScript` and `/JS` streams in uploaded PDFs is a heuristic filter that can be bypassed by hex-escaped names (`/J#61vaScript`) or compressed object streams. It is not relied upon as a primary security control.
-  - **In-Browser PDF.js Preview Surface:** Rendering PDFs via Mozilla PDF.js parses untrusted byte streams in the host page origin. To minimize this surface, `pdfjs-dist` is pinned to version `6.4.299` (patched against font-parsing CVE-2024-4367), `isEvalSupported: false` is enforced, `disableFontFace: true` is set, and annotation layers are disabled (`annotationMode: 0`). Preview requests follow the identical authorization and audit logging path as downloads. *Residual Risk:* Cutting preview entirely eliminates origin parser risk; maintaining preview accepts the risk of zero-day vulnerabilities in the client-side PDF parser.
-  - **Cookie HttpOnly Scope:** `HttpOnly` on `__Host-trustvault_token` limits one consequence of XSS by preventing client script from reading the session cookie via `document.cookie`. It does **not** stop in-origin malicious scripts from issuing authenticated fetch calls against the API using the victim's session.
+  - **Strict Content Security Policy (CSP):** `default-src 'self'`, `script-src 'self'`, `script-src-attr 'none'` (blocks inline event handlers), `style-src 'self' 'unsafe-inline'` (pinned host only; no general `https:` exfiltration vectors), `font-src 'self' data:` (pinned host only; no general `https:`), `object-src 'none'`, `frame-src 'none'`, `frame-ancestors 'none'`, `base-uri 'self'`, and `upgrade-insecure-requests`.
+  - **MIME & Download Headers:** `X-Content-Type-Options: nosniff` is enforced globally and on all file downloads, stopping browsers from MIME-sniffing non-executable files into HTML/JS. Downloads enforce `Content-Disposition: attachment; filename=...`.
+  - **Hardened Upload Whitelist:** Strictly permits `.pdf`, `.png`, `.jpg`, and `.txt`. Disallowed: `.docx`, `.xlsx` (removed to eliminate OOXML zip bomb and macro vectors), `.html`, `.svg`, `.sh`, `.exe`. For `.txt`, full-buffer UTF-8 decode (`fatal: true`) and null-byte (`0x00`) scanning are enforced.
+  - **Zero Preview Surface:** Mozilla `pdfjs-dist` is completely removed, eliminating client-side PDF parser execution risks.
 * **Automated Tests:**
-  - `HDR-01` & `HDR-02` in `tests/hardened-attacks.test.ts` (Asserts CSP directives and `nosniff`).
-  - `AUD-PRV-01` & `AUD-PRV-02` in `tests/hardened-attacks.test.ts` (Verifies preview/download authorization and audit parity).
-  - `scripts/verify-xss-playwright.ts` (Playwright E2E test verifying that `<img src=x onerror=window.__xss=1>` in document, user, and audit records never executes in any view).
+  - `HDR-02`, `CSP-01`, `CORS-01`, `PRV-01` in `tests/hardened-attacks.test.ts`.
+  - `UPL-01` to `UPL-05` in `tests/upload-hardening.test.ts`.
+
+#### T-55: Dual-Channel Credential Leakage & Subdomain Cookie Hijacking (CWE-384 / CWE-565)
+* **Attacker Scenario:** An application issues both a cookie and a JSON response body token, stores the token in frontend JavaScript memory (`localStorage` / React state), and accepts an `Authorization: Bearer` fallback. If an XSS bug exists anywhere on the site, malicious script can steal the token from JavaScript memory. Furthermore, if a plain cookie name (`trustvault_token`) is accepted, a sibling subdomain on the parent domain can set or overwrite the cookie.
+* **Defense Mechanism:**
+  - **Single Credential Path**: The login, registration, and MFA challenge verification JSON responses contain NO `token` body field. The client-side application holds ZERO tokens in JavaScript memory or `localStorage`.
+  - **Strict `__Host-` Prefix**: Exactly one session cookie is issued: `__Host-trustvault_token`. The `__Host-` prefix is enforced by browsers to require `Secure: true`, `Path: /`, and strictly forbids any `Domain` attribute, preventing sibling subdomains from setting, overwriting, or reading the cookie.
+  - **Bearer Fallback Eliminated**: Middleware strictly requires the `__Host-trustvault_token` cookie. The legacy `trustvault_token` plain cookie and the `Authorization: Bearer` fallback header are completely deleted.
+  - **Concurrent Judge Session Protection**: User logout clears the local cookie without bumping `tokenVersion`, preventing one evaluator's logout from terminating other concurrent evaluators on seeded shared accounts.
+* **Automated Test:** `AUTH-CK-01`, `AUTH-CK-02`, `AUTH-CK-03`, `AUTH-CK-04` in `tests/hardened-attacks.test.ts`.
 
 ---
 
@@ -486,17 +493,18 @@ TrustVault handles sensitive enterprise documents under a strict **Zero-Trust & 
 
 | Category | Threats Covered | Automated Test Suites | Total Tests | Simulation Scenarios |
 | :--- | :--- | :--- | :---: | :---: |
-| **A: Authorization & Access Control** | `T-01` to `T-06` | `tests/security.test.ts`, `tests/identity-revocation.test.ts` | 20 | 12 |
+| **A: Authorization & Access Control** | `T-01` to `T-06` | `tests/security.test.ts`, `tests/identity-revocation.test.ts` | 21 | 12 |
 | **B: Existence Shielding & Oracles** | `T-07` to `T-10` | `tests/security.test.ts`, `tests/identity-revocation.test.ts` | 5 | 6 |
-| **C: Storage, Upload & Data Destruction** | `T-11` to `T-14`, `T-38`, `T-39` | `tests/upload-hardening.test.ts`, `tests/threat-retention.test.ts` | 11 | 4 |
-| **D: Cryptographic Audit Ledger** | `T-15` to `T-18`, `T-31` | `tests/audit.test.ts`, `tests/audit-tamper-immutability.test.ts` | 6 | 4 |
+| **C: Storage, Upload & Data Destruction** | `T-11` to `T-14`, `T-38`, `T-39` | `tests/upload-hardening.test.ts`, `tests/threat-retention.test.ts` | 12 | 4 |
+| **D: Cryptographic Audit Ledger** | `T-15` to `T-18`, `T-31` | `tests/audit.test.ts`, `tests/audit-tamper-immutability.test.ts` | 5 | 4 |
 | **E: Infrastructure, Auth & Transport** | `T-19` to `T-22`, `T-27` to `T-30` | `tests/security.test.ts`, `scripts/verify-dal-invariants.ts` | 8 | 4 |
-| **F: Resource & Application Protection** | `T-23` to `T-26`, `T-36`, `T-37` | `tests/upload-hardening.test.ts`, `tests/backup-disaster-recovery.test.ts` | 4 | 2 |
+| **F: Resource & Application Protection** | `T-23` to `T-26`, `T-36`, `T-37` | `tests/upload-hardening.test.ts`, `tests/backup-disaster-recovery.test.ts` | 6 | 2 |
 | **G: Multi-Factor Authentication** | `T-32`, `T-41` | `tests/mfa-totp.test.ts` | 9 | 1 |
 | **H: Disaster Recovery & Encryption** | `T-34`, `T-35` | `tests/backup-disaster-recovery.test.ts` | 6 | 2 |
 | **I: Ephemeral Sharing & Governance** | `T-43` to `T-47` | `tests/governance-and-sharing.test.ts` | 5 | 3 |
-| **J: Advanced Hardened Attack Vectors** | `T-48` to `T-54` | `tests/hardened-attacks.test.ts`, `scripts/verify-xss-playwright.ts` | 16 | 7 |
-| **TOTALS** | **54 Modeled Threats (T-01 to T-54)** | **11 Automated Test Suites + 3 Scripts** | **76 Tests** | **42 Scenarios** |
+| **J: Advanced Hardened Attack Vectors** | `T-48` to `T-55` | `tests/hardened-attacks.test.ts` | 20 | 7 |
+| **TOTALS** | **55 Modeled Threats (T-01 to T-55)** | **11 Automated Test Suites** | **81 Tests** | **42 Scenarios** |
+
 
 
 

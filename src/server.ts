@@ -2,7 +2,6 @@ import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import fs from 'fs';
 import helmet from 'helmet';
-import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import { csrfProtection } from './middleware/csrf';
@@ -21,43 +20,30 @@ app.set('trust proxy', 1);
 // 2. Simple query parser to prevent Express qs nested object injection attacks
 app.set('query parser', 'simple');
 
-// 3. Security headers & CORS with Cloudflare Edge support
+// 3. Strict Security Headers: Frameguard DENY, Strict CSP, No CORS (Pure same-origin)
 app.use(
   helmet({
+    frameguard: { action: 'deny' },
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
         baseUri: ["'self'"],
-        fontSrc: ["'self'", 'https:', 'data:'],
+        fontSrc: ["'self'", 'data:'],
         formAction: ["'self'"],
         frameAncestors: ["'none'"],
-        imgSrc: ["'self'", 'data:', 'blob:', 'https://challenges.cloudflare.com'],
+        imgSrc: ["'self'", 'data:'],
         objectSrc: ["'none'"],
-        frameSrc: ["'self'", 'blob:', 'https://challenges.cloudflare.com'],
-        scriptSrc: [
-          "'self'",
-          "'unsafe-inline'",
-          'https://static.cloudflareinsights.com',
-          'https://challenges.cloudflare.com'
-        ],
+        frameSrc: ["'none'"],
+        scriptSrc: ["'self'"],
         scriptSrcAttr: ["'none'"],
-        styleSrc: ["'self'", 'https:', "'unsafe-inline'"],
-        connectSrc: [
-          "'self'",
-          'https://cloudflareinsights.com',
-          'https://static.cloudflareinsights.com',
-          'https://challenges.cloudflare.com'
-        ],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        connectSrc: ["'self'"],
         upgradeInsecureRequests: []
       }
     }
   })
 );
-app.use(cors({
-  origin: true,
-  credentials: true,
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-TrustVault-Client', 'X-Requested-With', 'x-pdf-otp']
-}));
+// Zero CORS: Application is strictly same-origin. Disallow external origin reflection.
 app.use(cookieParser());
 app.use(csrfProtection);
 

@@ -9,18 +9,17 @@ import { AuditLedgerView } from './components/AuditLedgerView';
 import { UserDirectoryView } from './components/UserDirectoryView';
 import { LoginView } from './components/LoginView';
 import { MfaModal } from './components/MfaModal';
-import { DocumentPreviewModal } from './components/DocumentPreviewModal';
 import { RevisionModal } from './components/RevisionModal';
 import { VersionHistoryModal } from './components/VersionHistoryModal';
-import { fetchDocuments, downloadDocument, fetchDocumentBlobUrl, deleteDocument, apiLogin } from './api';
+import { fetchDocuments, downloadDocument, deleteDocument, apiLogin, apiLogout, apiMe } from './api';
 
 type Tab = 'documents' | 'audit' | 'users';
 
 export const App: React.FC = () => {
-  const [token, setToken] = useState<string | null>(localStorage.getItem('tv_token'));
-  const [user, setUser] = useState<User | null>(
-    localStorage.getItem('tv_user') ? JSON.parse(localStorage.getItem('tv_user')!) : null
-  );
+  const [user, setUser] = useState<User | null>(() => {
+    const saved = localStorage.getItem('tv_user');
+    return saved ? JSON.parse(saved) : null;
+  });
 
   const [activeTab, setActiveTab] = useState<Tab>('documents');
   const [documents, setDocuments] = useState<VaultDocument[]>([]);
@@ -32,13 +31,6 @@ export const App: React.FC = () => {
   const [revisionDoc, setRevisionDoc] = useState<VaultDocument | null>(null);
   const [historyDoc, setHistoryDoc] = useState<VaultDocument | null>(null);
   const [isMfaOpen, setIsMfaOpen] = useState(false);
-  const [previewState, setPreviewState] = useState<{
-    doc: VaultDocument;
-    blobUrl: string;
-    mimeType: string;
-    arrayBuffer?: ArrayBuffer;
-    canDownload: boolean;
-  } | null>(null);
 
   // 2FA Prompt Banner state
   const [mfaBannerDismissed, setMfaBannerDismissed] = useState<boolean>(() => {
@@ -48,33 +40,49 @@ export const App: React.FC = () => {
   // Toast notification state
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
+  // Verify active session on boot
   useEffect(() => {
-    if (token && user) {
+    apiMe()
+      .then((data) => {
+        setUser(data.user);
+        localStorage.setItem('tv_user', JSON.stringify(data.user));
+      })
+      .catch(() => {
+        // Session invalid or not logged in
+        setUser(null);
+        localStorage.removeItem('tv_user');
+      });
+  }, []);
+
+  useEffect(() => {
+    if (user) {
       loadDocuments();
     }
-  }, [token, user]);
+  }, [user]);
 
   const showToast = (type: 'success' | 'error', message: string) => {
     setToast({ type, message });
     setTimeout(() => setToast(null), 4000);
   };
 
-  const handleLoginSuccess = (newToken: string, newUser: User) => {
-    setToken(newToken);
+  const handleLoginSuccess = (newUser: User) => {
     setUser(newUser);
     setActiveTab('documents');
-    localStorage.setItem('tv_token', newToken);
     localStorage.setItem('tv_user', JSON.stringify(newUser));
     showToast('success', `Signed in as ${newUser.name} (${newUser.role})`);
   };
 
-  const handleLogout = () => {
-    setToken(null);
+  const handleLogout = async () => {
+    try {
+      await apiLogout();
+    } catch {
+      // ignore
+    }
     setUser(null);
+    setDocuments([]);
     setActiveTab('documents');
-    localStorage.removeItem('tv_token');
     localStorage.removeItem('tv_user');
-    showToast('success', 'Logged out. Active session invalidated.');
+    showToast('success', 'Logged out.');
   };
 
   const handleDismissMfaBanner = () => {
@@ -106,8 +114,8 @@ export const App: React.FC = () => {
         handleLogout();
         return;
       }
-      if (data.token && data.user) {
-        handleLoginSuccess(data.token, data.user);
+      if (data.user) {
+        handleLoginSuccess(data.user);
         if (data.user.role !== 'ADMIN') {
           setActiveTab('documents');
         }
@@ -118,10 +126,10 @@ export const App: React.FC = () => {
   };
 
   const loadDocuments = async (filters?: any) => {
-    if (!token) return;
+    if (!user) return;
     setIsLoadingDocs(true);
     try {
-      const data = await fetchDocuments(token, filters);
+      const data = await fetchDocuments(filters);
       setDocuments(data);
     } catch (err: any) {
       showToast('error', err.message);
@@ -134,46 +142,21 @@ export const App: React.FC = () => {
   };
 
   const handleDownload = async (doc: VaultDocument) => {
-    if (!token) return;
     showToast('success', `Streaming ${doc.originalFilename}...`);
     try {
-      await downloadDocument(doc.id, doc.originalFilename, token);
+      await downloadDocument(doc.id, doc.originalFilename);
       showToast('success', `Downloaded ${doc.originalFilename} safely.`);
-      // Refresh documents list to immediately reflect Burn-on-Download grant self-destruct
+      // Refresh documents list to reflect Burn-on-Download grant self-destruct if applicable
       await loadDocuments();
     } catch (err: any) {
       showToast('error', `Download Refused: ${err.message}`);
     }
   };
 
-  const handlePreview = async (doc: VaultDocument) => {
-    if (!token) return;
-    showToast('success', `Decrypting in-browser stream for ${doc.title}...`);
-    try {
-      const { blobUrl, mimeType, arrayBuffer } = await fetchDocumentBlobUrl(doc.id, token, true);
-      const isOwner = doc.owner?.id === user?.id || doc.ownerId === user?.id;
-      const myGrant = Array.isArray(doc.permissions) && doc.permissions.length > 0 ? doc.permissions[0] : null;
-      const isPreviewOnly = !isOwner && !!myGrant?.previewOnly;
-      const canDownload = (isOwner || !!myGrant) && !isPreviewOnly && user?.role !== 'ADMIN';
-
-      setPreviewState({
-        doc,
-        blobUrl,
-        mimeType,
-        arrayBuffer,
-        canDownload
-      });
-      showToast('success', `In-browser preview ready for ${doc.originalFilename}.`);
-    } catch (err: any) {
-      showToast('error', `Preview Refused: ${err.message}`);
-    }
-  };
-
   const handleDelete = async (docId: string) => {
-    if (!token) return;
     if (!window.confirm('Are you sure you want to soft-delete this document?')) return;
     try {
-      await deleteDocument(docId, token);
+      await deleteDocument(docId);
       showToast('success', 'Document soft-deleted.');
       await loadDocuments();
     } catch (err: any) {
@@ -181,7 +164,7 @@ export const App: React.FC = () => {
     }
   };
 
-  if (!token || !user) {
+  if (!user) {
     return <LoginView onLoginSuccess={handleLoginSuccess} />;
   }
 
@@ -302,7 +285,6 @@ export const App: React.FC = () => {
             documents={documents}
             currentUser={user}
             onDownload={handleDownload}
-            onPreview={handlePreview}
             onOpenUpload={() => setIsUploadOpen(true)}
             onOpenPermissions={(doc) => setPermissionsDoc(doc)}
             onOpenRevision={(doc) => setRevisionDoc(doc)}
@@ -313,9 +295,9 @@ export const App: React.FC = () => {
           />
         )}
 
-        {activeTab === 'audit' && <AuditLedgerView token={token} />}
+        {activeTab === 'audit' && <AuditLedgerView />}
 
-        {activeTab === 'users' && <UserDirectoryView token={token} currentUser={user} />}
+        {activeTab === 'users' && <UserDirectoryView currentUser={user} />}
       </main>
 
       {/* Upload Modal */}
@@ -326,7 +308,6 @@ export const App: React.FC = () => {
           showToast('success', 'Document uploaded and hashed into vault.');
           loadDocuments();
         }}
-        token={token}
       />
 
       {/* Revision Modal (New Version Upload) */}
@@ -334,7 +315,6 @@ export const App: React.FC = () => {
         isOpen={!!revisionDoc}
         document={revisionDoc}
         onClose={() => setRevisionDoc(null)}
-        token={token}
         onSuccess={() => {
           showToast('success', 'New version revision committed and hashed into vault.');
           loadDocuments();
@@ -346,43 +326,22 @@ export const App: React.FC = () => {
         isOpen={!!historyDoc}
         document={historyDoc}
         onClose={() => setHistoryDoc(null)}
-        token={token}
       />
-
-      {/* Document In-App Preview Modal */}
-      {previewState && (
-        <DocumentPreviewModal
-          document={previewState.doc}
-          blobUrl={previewState.blobUrl}
-          mimeType={previewState.mimeType}
-          arrayBuffer={previewState.arrayBuffer}
-          canDownload={previewState.canDownload}
-          onClose={() => setPreviewState(null)}
-          onDownload={() => {
-            handleDownload(previewState.doc);
-            setPreviewState(null);
-          }}
-        />
-      )}
 
       {/* Permissions Modal */}
       <PermissionsModal
         document={permissionsDoc}
         isOpen={!!permissionsDoc}
         onClose={() => setPermissionsDoc(null)}
-        token={token}
         onPermissionsUpdated={() => loadDocuments()}
       />
 
       {/* MFA Setup & Management Modal */}
-      {token && (
-        <MfaModal
-          isOpen={isMfaOpen}
-          onClose={() => setIsMfaOpen(false)}
-          token={token}
-          onMfaStatusChange={handleMfaStatusChange}
-        />
-      )}
+      <MfaModal
+        isOpen={isMfaOpen}
+        onClose={() => setIsMfaOpen(false)}
+        onMfaStatusChange={handleMfaStatusChange}
+      />
 
       {/* Toast Notification */}
       {toast && (

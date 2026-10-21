@@ -3,14 +3,12 @@ import { X, QrCode, CheckCircle2, AlertCircle, Copy, KeyRound, Check } from 'luc
 import { apiSetupMfa, apiVerifyMfaSetup, apiDisableMfa } from '../api';
 
 interface MfaModalProps {
-  token: string;
   isOpen: boolean;
   onClose: () => void;
   onMfaStatusChange?: () => void;
 }
 
 export const MfaModal: React.FC<MfaModalProps> = ({
-  token,
   isOpen,
   onClose,
   onMfaStatusChange
@@ -48,7 +46,7 @@ export const MfaModal: React.FC<MfaModalProps> = ({
     setIsLoading(true);
     setError(null);
     try {
-      const data = await apiSetupMfa(token);
+      const data = await apiSetupMfa();
       setQrCode(data.qrCode);
       setSecret(data.secret);
       setStep('setup');
@@ -64,7 +62,7 @@ export const MfaModal: React.FC<MfaModalProps> = ({
     setIsLoading(true);
     setError(null);
     try {
-      const data = await apiVerifyMfaSetup(token, verificationCode);
+      const data = await apiVerifyMfaSetup(verificationCode);
       setBackupCodes(data.backupCodes || []);
       setStep('activated');
       if (onMfaStatusChange) onMfaStatusChange();
@@ -80,7 +78,7 @@ export const MfaModal: React.FC<MfaModalProps> = ({
     setIsLoading(true);
     setError(null);
     try {
-      await apiDisableMfa(token, disablePassword, disableCode);
+      await apiDisableMfa(disablePassword, disableCode);
       setStep('initial');
       if (onMfaStatusChange) onMfaStatusChange();
       onClose();

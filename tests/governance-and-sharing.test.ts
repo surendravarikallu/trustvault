@@ -2,13 +2,12 @@ import { describe, it, expect, beforeAll } from '@jest/globals';
 import request from 'supertest';
 import { app } from '../src/server';
 import { verifyAuditChain } from '../src/dal/auditDal';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../src/prisma';
+import { extractAuthCookie } from './testAuth';
 
-const prisma = new PrismaClient();
-
-let adminToken: string;
-let ownerToken: string;
-let viewerToken: string;
+let adminCookie: string;
+let ownerCookie: string;
+let viewerCookie: string;
 let viewerUserId: string;
 let testDocId: string;
 
@@ -18,27 +17,27 @@ beforeAll(async () => {
     .post('/api/auth/login')
     .send({ email: 'admin@trustvault.local', password: 'Admin@TrustVault2026!' });
   expect(adminRes.status).toBe(200);
-  adminToken = adminRes.body.token;
+  adminCookie = extractAuthCookie(adminRes);
 
   // Login Owner
   const ownerRes = await request(app)
     .post('/api/auth/login')
     .send({ email: 'owner@trustvault.local', password: 'Owner@TrustVault2026!' });
   expect(ownerRes.status).toBe(200);
-  ownerToken = ownerRes.body.token;
+  ownerCookie = extractAuthCookie(ownerRes);
 
   // Login Viewer
   const viewerRes = await request(app)
     .post('/api/auth/login')
     .send({ email: 'viewer@trustvault.local', password: 'Viewer@TrustVault2026!' });
   expect(viewerRes.status).toBe(200);
-  viewerToken = viewerRes.body.token;
+  viewerCookie = extractAuthCookie(viewerRes);
   viewerUserId = viewerRes.body.user.id;
 
   // Find a document belonging to Owner
   const docsRes = await request(app)
     .get('/api/documents')
-    .set('Authorization', `Bearer ${ownerToken}`);
+    .set('Cookie', ownerCookie);
   expect(docsRes.status).toBe(200);
   expect(docsRes.body.documents.length).toBeGreaterThan(0);
   testDocId = docsRes.body.documents[0].id;
@@ -50,12 +49,11 @@ describe('Advanced Ephemeral Sharing & Admin User Governance Suite', () => {
       // 1. Owner grants READ permission with burnOnDownload: true
       const grantRes = await request(app)
         .post(`/api/documents/${testDocId}/permissions`)
-        .set('Authorization', `Bearer ${ownerToken}`)
+        .set('Cookie', ownerCookie)
         .send({
           targetEmail: 'viewer@trustvault.local',
           permissionLevel: 'READ',
-          burnOnDownload: true,
-          previewOnly: false
+          burnOnDownload: true
         });
       expect(grantRes.status).toBe(201);
 
@@ -74,7 +72,7 @@ describe('Advanced Ephemeral Sharing & Admin User Governance Suite', () => {
       // 2. Viewer downloads the document (first attempt) -> 200 OK
       const downloadRes = await request(app)
         .get(`/api/documents/${testDocId}/download`)
-        .set('Authorization', `Bearer ${viewerToken}`);
+        .set('Cookie', viewerCookie);
       expect(downloadRes.status).toBe(200);
 
       // Give event loop brief instant for res.on('finish') burn
@@ -94,7 +92,7 @@ describe('Advanced Ephemeral Sharing & Admin User Governance Suite', () => {
       // 4. Viewer attempts to download a second time -> 404 Not Found (zero existence confirmation)
       const secondDownload = await request(app)
         .get(`/api/documents/${testDocId}/download`)
-        .set('Authorization', `Bearer ${viewerToken}`);
+        .set('Cookie', viewerCookie);
       expect(secondDownload.status).toBe(404);
 
       // 5. Verify audit ledger HMAC chain contains the burn event and remains valid
@@ -103,38 +101,32 @@ describe('Advanced Ephemeral Sharing & Admin User Governance Suite', () => {
     });
   });
 
-  describe('In-Browser Ephemeral Preview (Binary Download Prevention)', () => {
-    it('PRV-01: Blocks raw binary downloads with 403 while permitting inline preview streaming', async () => {
-      // 1. Owner grants READ permission with previewOnly: true
+  describe('Download Security: Removal of Inline Preview Bypass', () => {
+    it('PRV-01: ?preview=true behaves strictly like a plain download (Content-Disposition: attachment)', async () => {
+      // 1. Owner grants standard READ permission
       const grantRes = await request(app)
         .post(`/api/documents/${testDocId}/permissions`)
-        .set('Authorization', `Bearer ${ownerToken}`)
+        .set('Cookie', ownerCookie)
         .send({
           targetEmail: 'viewer@trustvault.local',
           permissionLevel: 'READ',
-          burnOnDownload: false,
-          previewOnly: true
+          burnOnDownload: false
         });
       expect(grantRes.status).toBe(201);
 
-      // 2. Viewer attempts standard binary download -> 403 Forbidden
-      const downloadRes = await request(app)
-        .get(`/api/documents/${testDocId}/download`)
-        .set('Authorization', `Bearer ${viewerToken}`);
-      expect(downloadRes.status).toBe(403);
-      expect(downloadRes.body.error).toContain('In-Browser Preview Only');
-
-      // 3. Viewer requests inline browser preview -> 200 OK with inline Content-Disposition
+      // 2. Viewer calls download with ?preview=true
       const previewRes = await request(app)
         .get(`/api/documents/${testDocId}/download?preview=true`)
-        .set('Authorization', `Bearer ${viewerToken}`);
+        .set('Cookie', viewerCookie);
       expect(previewRes.status).toBe(200);
-      expect(previewRes.headers['content-disposition']).toContain('inline');
+      // Strictly download-only: Must be attachment, application/octet-stream, never inline
+      expect(previewRes.headers['content-disposition']).toContain('attachment');
+      expect(previewRes.headers['content-type']).toContain('application/octet-stream');
 
       // Clean up grant
       await request(app)
         .delete(`/api/documents/${testDocId}/permissions/${viewerUserId}`)
-        .set('Authorization', `Bearer ${ownerToken}`);
+        .set('Cookie', ownerCookie);
     });
   });
 
@@ -146,7 +138,7 @@ describe('Advanced Ephemeral Sharing & Admin User Governance Suite', () => {
       // 1. Rejects invalid payload
       const invalidRes = await request(app)
         .post('/api/admin/users')
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminCookie)
         .send({
           name: 'X',
           email: 'not-an-email',
@@ -157,7 +149,7 @@ describe('Advanced Ephemeral Sharing & Admin User Governance Suite', () => {
       // 2. Non-admin is rejected with 403
       const nonAdminRes = await request(app)
         .post('/api/admin/users')
-        .set('Authorization', `Bearer ${viewerToken}`)
+        .set('Cookie', viewerCookie)
         .send({
           name: 'Frank Castle',
           email: testNewUserEmail,
@@ -169,7 +161,7 @@ describe('Advanced Ephemeral Sharing & Admin User Governance Suite', () => {
       // 3. Admin successfully provisions user
       const createRes = await request(app)
         .post('/api/admin/users')
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminCookie)
         .send({
           name: 'Frank Castle',
           email: testNewUserEmail,
@@ -181,39 +173,40 @@ describe('Advanced Ephemeral Sharing & Admin User Governance Suite', () => {
       expect(createRes.body.user.email).toBe(testNewUserEmail);
       createdUserId = createRes.body.user.id;
 
-      // 4. Provisioned user can authenticate
+      // 4. Provisioned user can authenticate and receives cookie only (no body token)
       const loginRes = await request(app)
         .post('/api/auth/login')
         .send({ email: testNewUserEmail, password: 'Password@2026Test!' });
       expect(loginRes.status).toBe(200);
-      expect(loginRes.body.token).toBeDefined();
+      expect(loginRes.body.token).toBeUndefined();
+      expect(loginRes.headers['set-cookie']).toBeDefined();
     });
 
     it('ADM-02: Admin resets user password and atomically invalidates active sessions (L-01)', async () => {
-      // 1. Log in provisioned user and obtain active JWT
+      // 1. Log in provisioned user and obtain session cookie
       const loginRes = await request(app)
         .post('/api/auth/login')
         .send({ email: testNewUserEmail, password: 'Password@2026Test!' });
       expect(loginRes.status).toBe(200);
-      const activeUserToken = loginRes.body.token;
+      const activeUserCookie = extractAuthCookie(loginRes);
 
-      // Verify token works
+      // Verify cookie works
       const meBefore = await request(app)
         .get('/api/auth/me')
-        .set('Authorization', `Bearer ${activeUserToken}`);
+        .set('Cookie', activeUserCookie);
       expect(meBefore.status).toBe(200);
 
       // 2. Admin issues password reset
       const resetRes = await request(app)
         .post(`/api/admin/users/${createdUserId}/reset-password`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminCookie)
         .send({ newPassword: 'NewSecret@2026Reset!' });
       expect(resetRes.status).toBe(200);
 
-      // 3. Prior active JWT is immediately invalidated (tokenVersion mismatch -> 401)
+      // 3. Prior active session cookie is immediately invalidated (tokenVersion mismatch -> 401)
       const meAfter = await request(app)
         .get('/api/auth/me')
-        .set('Authorization', `Bearer ${activeUserToken}`);
+        .set('Cookie', activeUserCookie);
       expect(meAfter.status).toBe(401);
 
       // 4. Old password rejected, new password succeeds
@@ -241,7 +234,7 @@ describe('Advanced Ephemeral Sharing & Admin User Governance Suite', () => {
       // 2. Admin resets 2FA
       const resetMfaRes = await request(app)
         .post(`/api/admin/users/${createdUserId}/reset-2fa`)
-        .set('Authorization', `Bearer ${adminToken}`);
+        .set('Cookie', adminCookie);
       expect(resetMfaRes.status).toBe(200);
 
       // 3. Verify user in DB has mfaSecret = null and empty backup codes

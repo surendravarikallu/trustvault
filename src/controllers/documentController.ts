@@ -215,16 +215,6 @@ export async function downloadDocument(req: AuthenticatedRequest, res: Response)
       return;
     }
 
-    const isPreview = req.query.preview === 'true' || req.query.is_preview === 'true';
-
-    // Enforcement: If shared as Preview-Only, raw attachment downloads are prohibited
-    if (activeGrant?.previewOnly && !isPreview) {
-      res.status(403).json({
-        error: 'This document was shared with In-Browser Preview Only restrictions. Binary file download is prohibited.'
-      });
-      return;
-    }
-
     // Enforcement: Download Quota Check
     if (activeGrant && activeGrant.downloadCount !== undefined && typeof activeGrant.maxDownloads === 'number' && activeGrant.maxDownloads > 0 && activeGrant.downloadCount >= activeGrant.maxDownloads) {
       res.status(404).json({ error: 'Document not found.' });
@@ -233,7 +223,7 @@ export async function downloadDocument(req: AuthenticatedRequest, res: Response)
 
     // Enforcement: PDF Password / One-Time Password (OTP) verification
     const otpProvided = (req.headers['x-pdf-otp'] as string) || (req.query.otp as string);
-    if (activeGrant?.pdfProtected && activeGrant.otpHash && !isPreview) {
+    if (activeGrant?.pdfProtected && activeGrant.otpHash) {
       if (!otpProvided) {
         res.status(401).json({
           pdfProtected: true,
@@ -252,32 +242,19 @@ export async function downloadDocument(req: AuthenticatedRequest, res: Response)
       }
     }
 
-    // Safe streaming headers with RFC 5987 Content-Disposition
+    // Safe streaming headers with RFC 5987 Content-Disposition: Strictly attachment
     const encodedFilename = encodeURIComponent(document.originalFilename).replace(/['()]/g, escape);
-    let effectiveMime = document.mimeType || 'application/octet-stream';
     const lowerFilename = document.originalFilename.toLowerCase();
-    if (lowerFilename.endsWith('.pdf')) {
-      effectiveMime = 'application/pdf';
-    } else if (lowerFilename.endsWith('.txt')) {
-      effectiveMime = 'text/plain';
-    } else if (lowerFilename.endsWith('.json')) {
-      effectiveMime = 'application/json';
-    } else if (lowerFilename.endsWith('.png')) {
-      effectiveMime = 'image/png';
-    } else if (lowerFilename.endsWith('.jpg') || lowerFilename.endsWith('.jpeg')) {
-      effectiveMime = 'image/jpeg';
-    }
 
-    res.setHeader('Content-Type', isPreview ? effectiveMime : 'application/octet-stream');
+    res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    const dispositionType = isPreview ? 'inline' : 'attachment';
     res.setHeader(
       'Content-Disposition',
-      `${dispositionType}; filename="${document.originalFilename.replace(/"/g, '')}"; filename*=UTF-8''${encodedFilename}`
+      `attachment; filename="${document.originalFilename.replace(/"/g, '')}"; filename*=UTF-8''${encodedFilename}`
     );
 
     // Dynamic Delivery for PDFs: Forensic Watermarking and Password Encryption
-    if (lowerFilename.endsWith('.pdf') && (activeGrant || !isPreview)) {
+    if (lowerFilename.endsWith('.pdf')) {
       let fileBuffer = await StorageService.readDecryptedFile(filePath);
 
       // Apply dynamic forensic watermark for grantee or if customized
@@ -305,7 +282,7 @@ export async function downloadDocument(req: AuthenticatedRequest, res: Response)
       }
 
       // Enforcement: Bounded Multi-Download Quota / Burn-on-Download
-      if (activeGrant && !isPreview) {
+      if (activeGrant) {
         res.on('finish', async () => {
           try {
             await recordDownloadAndEnforceQuota(document.id, user.id, user.email, getRequestContext(req));
@@ -321,7 +298,7 @@ export async function downloadDocument(req: AuthenticatedRequest, res: Response)
     }
 
     // Enforcement: Bounded Multi-Download Quota / Burn-on-Download for non-PDF files
-    if (activeGrant && !isPreview) {
+    if (activeGrant) {
       res.on('finish', async () => {
         try {
           await recordDownloadAndEnforceQuota(document.id, user.id, user.email, getRequestContext(req));

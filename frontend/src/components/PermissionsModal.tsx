@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, UserPlus, Trash2, ShieldCheck, AlertCircle, CheckCircle2, Flame, Eye, Lock, FileKey, Copy, Check } from 'lucide-react';
+import { X, UserPlus, Trash2, ShieldCheck, AlertCircle, CheckCircle2, Flame, Lock, FileKey, Copy, Check } from 'lucide-react';
 import type { VaultDocument, DocumentPermission, ReviewerSuggestion, PermissionLevel } from '../types';
 import {
   fetchDocumentPermissions,
@@ -12,7 +12,6 @@ interface PermissionsModalProps {
   document: VaultDocument | null;
   isOpen: boolean;
   onClose: () => void;
-  token: string;
   onPermissionsUpdated?: () => void;
 }
 
@@ -20,7 +19,6 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
   document,
   isOpen,
   onClose,
-  token,
   onPermissionsUpdated
 }) => {
   const [grantees, setGrantees] = useState<DocumentPermission[]>([]);
@@ -29,7 +27,6 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
   const [expiresAt, setExpiresAt] = useState('');
   const [downloadPolicy, setDownloadPolicy] = useState<'burn' | 'quota' | 'unlimited'>('burn');
   const [maxDownloads, setMaxDownloads] = useState<number>(3);
-  const [previewOnly, setPreviewOnly] = useState(false);
   const [pdfProtected, setPdfProtected] = useState(true);
   const [watermarkText, setWatermarkText] = useState('');
   const [generatedOtp, setGeneratedOtp] = useState<string | null>(null);
@@ -49,7 +46,6 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
       setCopiedOtp(false);
       setDownloadPolicy('burn');
       setMaxDownloads(3);
-      setPreviewOnly(false);
       setPdfProtected(true);
       setWatermarkText('');
     }
@@ -59,7 +55,7 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
 
   const loadGrantees = async () => {
     try {
-      const data = await fetchDocumentPermissions(document.id, token);
+      const data = await fetchDocumentPermissions(document.id);
       setGrantees(data);
     } catch (err: any) {
       setError(err.message);
@@ -82,11 +78,9 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
         targetEmail.trim(),
         permissionLevel,
         expiresAt ? new Date(expiresAt).toISOString() : null,
-        token,
         {
           burnOnDownload: isBurn,
           maxDownloads: quota,
-          previewOnly,
           pdfProtected,
           watermarkText: watermarkText.trim() || undefined
         }
@@ -113,7 +107,7 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
     setSuccessMsg(null);
 
     try {
-      await revokePermission(document.id, userId, token);
+      await revokePermission(document.id, userId);
       setSuccessMsg(`Revoked access for ${email} immediately.`);
       await loadGrantees();
       onPermissionsUpdated?.();
@@ -126,7 +120,7 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
     setIsSuggesting(true);
     setError(null);
     try {
-      const data = await suggestReviewersWithAI(document.id, token);
+      const data = await suggestReviewersWithAI(document.id);
       setSuggestions(data);
     } catch (err: any) {
       setError(err.message);
@@ -454,19 +448,6 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
                     Require One-Time Password (OTP) to open PDF
                   </span>
                 </label>
-
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={previewOnly}
-                    onChange={(e) => setPreviewOnly(e.target.checked)}
-                    style={{ accentColor: 'var(--color-indigo)' }}
-                  />
-                  <Eye size={12} color="var(--color-indigo)" />
-                  <span style={{ fontWeight: 500, color: previewOnly ? '#c7d2fe' : 'inherit' }}>
-                    In-Browser Preview Only (Block Raw Binary)
-                  </span>
-                </label>
               </div>
 
               <div>
@@ -534,23 +515,6 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
                                 >
                                   <Flame size={10} />
                                   <span>Burn-on-Download</span>
-                                </span>
-                              )}
-                              {g.previewOnly && (
-                                <span
-                                  className="category-pill"
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '3px',
-                                    borderColor: 'var(--color-indigo-border)',
-                                    color: '#c7d2fe',
-                                    background: 'var(--color-indigo-subtle)'
-                                  }}
-                                  title="User can only view inside browser; binary downloads blocked"
-                                >
-                                  <Eye size={10} />
-                                  <span>Preview Only</span>
                                 </span>
                               )}
                               {(g.downloadCount ?? 0) > 0 && (

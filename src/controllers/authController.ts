@@ -73,7 +73,6 @@ export async function register(req: Request, res: Response): Promise<void> {
 
   res.status(201).json({
     message: 'User registered successfully as VIEWER.',
-    token,
     user: {
       id: newUser.id,
       email: newUser.email,
@@ -157,7 +156,6 @@ export async function login(req: Request, res: Response): Promise<void> {
   setAuthCookies(res, token);
 
   res.json({
-    token,
     user: {
       id: user.id,
       email: user.email,
@@ -174,10 +172,9 @@ export async function logout(req: AuthenticatedRequest, res: Response): Promise<
     return;
   }
 
-  // Instant Revocation: Increment token version to kill all current user sessions (L-01)
-  await incrementTokenVersion(req.user.id);
+  // Per-session logout: clears client cookie without invalidating other judges concurrent sessions
   clearAuthCookies(res);
-  res.json({ message: 'Logged out successfully. All active sessions invalidated.' });
+  res.json({ message: 'Logged out successfully.' });
 }
 
 export async function me(req: AuthenticatedRequest, res: Response): Promise<void> {

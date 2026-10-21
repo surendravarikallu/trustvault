@@ -13,13 +13,22 @@ declare global {
  * created up to 150 connection slots, causing pool exhaustion under concurrency).
  * Consolidates all database operations into a single coordinated connection pool.
  */
+import { config } from './config';
+
 export const prisma =
   global.__trustvault_prisma__ ||
   new PrismaClient({
+    datasources: {
+      db: {
+        url: process.env.NODE_ENV === 'test'
+          ? (process.env.TEST_DATABASE_URL || config.testDatabaseUrl)
+          : (process.env.DATABASE_URL || config.databaseUrl)
+      }
+    },
     log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error']
   });
 
-if (process.env.NODE_ENV !== 'production') {
+if (process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test') {
   global.__trustvault_prisma__ = prisma;
 }
 

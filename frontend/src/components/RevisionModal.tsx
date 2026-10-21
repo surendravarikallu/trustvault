@@ -7,7 +7,6 @@ interface RevisionModalProps {
   isOpen: boolean;
   onClose: () => void;
   document: VaultDocument | null;
-  token: string;
   onSuccess: () => void;
 }
 
@@ -15,7 +14,6 @@ export const RevisionModal: React.FC<RevisionModalProps> = ({
   isOpen,
   onClose,
   document,
-  token,
   onSuccess
 }) => {
   const [file, setFile] = useState<File | null>(null);
@@ -35,7 +33,7 @@ export const RevisionModal: React.FC<RevisionModalProps> = ({
     setError(null);
 
     try {
-      await replaceDocument(document.id, file, token);
+      await replaceDocument(document.id, file);
       onSuccess();
       onClose();
     } catch (err: any) {

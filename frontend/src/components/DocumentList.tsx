@@ -30,7 +30,6 @@ interface DocumentListProps {
   documents: VaultDocument[];
   currentUser: User;
   onDownload: (doc: VaultDocument) => void;
-  onPreview: (doc: VaultDocument) => void;
   onOpenUpload: () => void;
   onOpenPermissions: (doc: VaultDocument) => void;
   onOpenRevision?: (doc: VaultDocument) => void;
@@ -44,7 +43,6 @@ export const DocumentList: React.FC<DocumentListProps> = ({
   documents,
   currentUser,
   onDownload,
-  onPreview,
   onOpenUpload,
   onOpenPermissions,
   onOpenRevision,
@@ -527,12 +525,10 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                 const isOwner = doc.owner?.id === currentUser.id || doc.ownerId === currentUser.id;
                 const myGrant = Array.isArray(doc.permissions) && doc.permissions.length > 0 ? doc.permissions[0] : null;
                 const hasGrant = !!myGrant;
-                const isPreviewOnly = !isOwner && !!myGrant?.previewOnly;
                 const isBurnOnDownload = !isOwner && !!myGrant?.burnOnDownload;
-                const canDownload = (isOwner || hasGrant) && !isPreviewOnly;
-                const canPreview = isOwner || hasGrant;
+                const canDownload = isOwner || hasGrant;
                 const canManage = isOwner; // L-03: Strict owner-only delegation
-                const canEdit = isOwner || (!isPreviewOnly && myGrant?.permissionLevel === 'EDIT');
+                const canEdit = isOwner || myGrant?.permissionLevel === 'EDIT';
                 const hashValue = doc.fileHash || 'Verified-Blob';
 
                 return (
@@ -574,25 +570,6 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                               >
                                 <Flame size={10} />
                                 <span>Burn-on-Download</span>
-                              </span>
-                            )}
-                            {isPreviewOnly && (
-                              <span
-                                className="category-pill"
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '3px',
-                                  borderColor: 'var(--color-indigo-border)',
-                                  color: '#c7d2fe',
-                                  background: 'var(--color-indigo-subtle)',
-                                  fontSize: '10px',
-                                  flexShrink: 0
-                                }}
-                                title="Restricted to in-browser viewing only; raw binary download blocked"
-                              >
-                                <Eye size={10} />
-                                <span>Preview Only</span>
                               </span>
                             )}
                           </div>
@@ -656,18 +633,6 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                     {/* Operational Action Controls */}
                     <td style={{ textAlign: 'right' }}>
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                        {canPreview && (
-                          <button
-                            className="btn btn-secondary btn-sm"
-                            onClick={() => onPreview(doc)}
-                            title="In-Browser Ephemeral Preview (Streamed and decrypted directly in memory)"
-                            style={isPreviewOnly ? { borderColor: 'rgba(168, 85, 247, 0.4)', color: '#c084fc' } : {}}
-                          >
-                            <Eye size={12} />
-                            <span>Preview</span>
-                          </button>
-                        )}
-
                         {canDownload ? (
                           <button
                             className="btn btn-secondary btn-sm"
@@ -677,16 +642,6 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                           >
                             <Download size={12} />
                             <span>Download</span>
-                          </button>
-                        ) : isPreviewOnly ? (
-                          <button
-                            className="btn btn-secondary btn-sm"
-                            disabled
-                            style={{ opacity: 0.5, cursor: 'not-allowed', borderColor: 'rgba(168, 85, 247, 0.3)' }}
-                            title="Binary download disabled by document policy. Use In-Browser Preview."
-                          >
-                            <Lock size={12} />
-                            <span>Download Disabled</span>
                           </button>
                         ) : currentUser.role === 'ADMIN' ? (
                           <button

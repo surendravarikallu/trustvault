@@ -1,9 +1,8 @@
 import { describe, it, expect } from '@jest/globals';
-import { PrismaClient, AuditStatus } from '@prisma/client';
+import { AuditStatus } from '@prisma/client';
+import { prisma } from '../src/prisma';
 import { logAuditEvent, verifyAuditChain, computeAuditHash, getAuditLogs } from '../src/dal/auditDal';
 import { exportAuditAnchor, loadAuditAnchor } from '../src/utils/auditAnchor';
-
-const prisma = new PrismaClient();
 
 describe('Cryptographic Audit Ledger & Tamper Detection Suite', () => {
   it('AUD-01: Verifies all 13 canonical columns are cryptographically protected by HMAC-SHA256', async () => {

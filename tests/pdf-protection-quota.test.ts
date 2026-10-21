@@ -1,15 +1,14 @@
 import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import request from 'supertest';
 import { app } from '../src/server';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../src/prisma';
 import { PDFDocument } from 'pdf-lib';
 import { closeRedis } from '../src/utils/redis';
-
-const prisma = new PrismaClient();
+import { extractAuthCookie } from './testAuth';
 
 describe('Dynamic PDF Protection, OTP & Bounded Multi-Download Suite', () => {
-  let ownerToken: string;
-  let viewerToken: string;
+  let ownerCookie: string;
+  let viewerCookie: string;
   let viewerUserId: string;
   let pdfDocId: string;
 
@@ -19,14 +18,14 @@ describe('Dynamic PDF Protection, OTP & Bounded Multi-Download Suite', () => {
       .post('/api/auth/login')
       .send({ email: 'owner@trustvault.local', password: 'Owner@TrustVault2026!' });
     expect(ownerRes.status).toBe(200);
-    ownerToken = ownerRes.body.token;
+    ownerCookie = extractAuthCookie(ownerRes);
 
     // 2. Authenticate Viewer
     const viewerRes = await request(app)
       .post('/api/auth/login')
       .send({ email: 'viewer@trustvault.local', password: 'Viewer@TrustVault2026!' });
     expect(viewerRes.status).toBe(200);
-    viewerToken = viewerRes.body.token;
+    viewerCookie = extractAuthCookie(viewerRes);
     viewerUserId = viewerRes.body.user.id;
 
     // 3. Create a test PDF document
@@ -37,7 +36,7 @@ describe('Dynamic PDF Protection, OTP & Bounded Multi-Download Suite', () => {
 
     const uploadRes = await request(app)
       .post('/api/documents')
-      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('Cookie', ownerCookie)
       .attach('file', Buffer.from(pdfBytes), 'secret_board_minutes.pdf')
       .field('title', 'Secret Board Minutes')
       .field('category', 'BOARD_MEMO');
@@ -59,7 +58,7 @@ describe('Dynamic PDF Protection, OTP & Bounded Multi-Download Suite', () => {
     // 1. Owner grants READ permission with maxDownloads = 2
     const grantRes = await request(app)
       .post(`/api/documents/${pdfDocId}/permissions`)
-      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('Cookie', ownerCookie)
       .send({
         targetEmail: 'viewer@trustvault.local',
         permissionLevel: 'READ',
@@ -71,7 +70,7 @@ describe('Dynamic PDF Protection, OTP & Bounded Multi-Download Suite', () => {
     // 2. Download 1 (Remaining: 1) -> HTTP 200
     const dl1 = await request(app)
       .get(`/api/documents/${pdfDocId}/download`)
-      .set('Authorization', `Bearer ${viewerToken}`);
+      .set('Cookie', viewerCookie);
     expect(dl1.status).toBe(200);
 
     // Give brief delay for res.on('finish') async database update
@@ -87,7 +86,7 @@ describe('Dynamic PDF Protection, OTP & Bounded Multi-Download Suite', () => {
     // 3. Download 2 (Second of 2 allowed) -> HTTP 200
     const dl2 = await request(app)
       .get(`/api/documents/${pdfDocId}/download`)
-      .set('Authorization', `Bearer ${viewerToken}`);
+      .set('Cookie', viewerCookie);
     expect(dl2.status).toBe(200);
 
     // Give brief delay for res.on('finish') quota exhaustion auto-burn
@@ -96,7 +95,7 @@ describe('Dynamic PDF Protection, OTP & Bounded Multi-Download Suite', () => {
     // 4. Download 3 (Exceeded quota of 2) -> HTTP 404 (Fail-closed)
     const dl3 = await request(app)
       .get(`/api/documents/${pdfDocId}/download`)
-      .set('Authorization', `Bearer ${viewerToken}`);
+      .set('Cookie', viewerCookie);
     expect(dl3.status).toBe(404);
   });
 
@@ -105,7 +104,7 @@ describe('Dynamic PDF Protection, OTP & Bounded Multi-Download Suite', () => {
     const testOtp = 'VAULT99X';
     const grantRes = await request(app)
       .post(`/api/documents/${pdfDocId}/permissions`)
-      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('Cookie', ownerCookie)
       .send({
         targetEmail: 'viewer@trustvault.local',
         permissionLevel: 'READ',
@@ -121,7 +120,7 @@ describe('Dynamic PDF Protection, OTP & Bounded Multi-Download Suite', () => {
     // 2. Viewer attempts download without OTP -> HTTP 401
     const noOtpRes = await request(app)
       .get(`/api/documents/${pdfDocId}/download`)
-      .set('Authorization', `Bearer ${viewerToken}`);
+      .set('Cookie', viewerCookie);
 
     expect(noOtpRes.status).toBe(401);
     expect(noOtpRes.body.pdfProtected).toBe(true);
@@ -129,7 +128,7 @@ describe('Dynamic PDF Protection, OTP & Bounded Multi-Download Suite', () => {
     // 3. Viewer attempts download with invalid OTP -> HTTP 401
     const wrongOtpRes = await request(app)
       .get(`/api/documents/${pdfDocId}/download`)
-      .set('Authorization', `Bearer ${viewerToken}`)
+      .set('Cookie', viewerCookie)
       .set('x-pdf-otp', 'WRONG_CODE');
 
     expect(wrongOtpRes.status).toBe(401);
@@ -138,7 +137,7 @@ describe('Dynamic PDF Protection, OTP & Bounded Multi-Download Suite', () => {
     // 4. Viewer downloads with valid OTP -> HTTP 200 & returns encrypted PDF
     const validOtpRes = await request(app)
       .get(`/api/documents/${pdfDocId}/download`)
-      .set('Authorization', `Bearer ${viewerToken}`)
+      .set('Cookie', viewerCookie)
       .set('x-pdf-otp', testOtp)
       .buffer(true)
       .parse((res, callback) => {
@@ -171,14 +170,13 @@ describe('Dynamic PDF Protection, OTP & Bounded Multi-Download Suite', () => {
       .send({ email: 'owner@trustvault.local', password: 'Owner@TrustVault2026!' });
 
     expect(loginRes.status).toBe(200);
-    const setCookieHeaders = loginRes.headers['set-cookie'];
-    expect(setCookieHeaders).toBeDefined();
+    expect(loginRes.body.token).toBeUndefined(); // Zero token in body
+    const cookie = extractAuthCookie(loginRes);
 
     // 2. Access /api/auth/me using ONLY the cookie (no Authorization header)
-    const cookieString = Array.isArray(setCookieHeaders) ? setCookieHeaders.join('; ') : setCookieHeaders;
     const meRes = await request(app)
       .get('/api/auth/me')
-      .set('Cookie', cookieString);
+      .set('Cookie', cookie);
 
     expect(meRes.status).toBe(200);
     expect(meRes.body.user.email).toBe('owner@trustvault.local');
@@ -186,7 +184,7 @@ describe('Dynamic PDF Protection, OTP & Bounded Multi-Download Suite', () => {
     // 3. Logout clears cookie
     const logoutRes = await request(app)
       .post('/api/auth/logout')
-      .set('Cookie', cookieString);
+      .set('Cookie', cookie);
 
     expect(logoutRes.status).toBe(200);
     const logoutCookies = logoutRes.headers['set-cookie'];

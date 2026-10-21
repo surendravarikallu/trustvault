@@ -2,13 +2,14 @@ import { describe, it, expect, beforeAll } from '@jest/globals';
 import request from 'supertest';
 import { app } from '../src/server';
 
-let ownerToken: string;
+let ownerCookie: string;
 
 beforeAll(async () => {
   const ownerRes = await request(app)
     .post('/api/auth/login')
     .send({ email: 'owner@trustvault.local', password: 'Owner@TrustVault2026!' });
-  ownerToken = ownerRes.body.token;
+  const setCookie = ownerRes.headers['set-cookie'];
+  ownerCookie = Array.isArray(setCookie) ? setCookie[0].split(';')[0] : setCookie.split(';')[0];
 });
 
 describe('Upload Hardening, Storage Lifecycle & Search Bounding Suite', () => {
@@ -17,7 +18,7 @@ describe('Upload Hardening, Storage Lifecycle & Search Bounding Suite', () => {
 
     const res = await request(app)
       .post('/api/documents')
-      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('Cookie', ownerCookie)
       .field('title', 'Disguised Executable')
       .field('category', 'Legal')
       .attach('file', maliciousPayload, 'innocent_contract.pdf');
@@ -31,7 +32,7 @@ describe('Upload Hardening, Storage Lifecycle & Search Bounding Suite', () => {
 
     const res = await request(app)
       .post('/api/documents')
-      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('Cookie', ownerCookie)
       .field('title', 'Shell Script Document')
       .field('category', 'General')
       .attach('file', scriptPayload, 'script.sh');
@@ -40,18 +41,32 @@ describe('Upload Hardening, Storage Lifecycle & Search Bounding Suite', () => {
     expect(res.body.error).toContain('not in the permitted whitelist');
   });
 
-  it('UPL-03: Rejects mismatched extension and magic bytes (e.g. plain text named as .docx)', async () => {
-    const fakeDocxPayload = Buffer.from('This is plain text, not a valid ZIP/OOXML archive');
+  it('UPL-03: Rejects mismatched extension and magic bytes (e.g. plain text named as .pdf)', async () => {
+    const fakePdfPayload = Buffer.from('This is plain text, not a valid %PDF document');
 
     const res = await request(app)
       .post('/api/documents')
-      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('Cookie', ownerCookie)
       .field('title', 'Corrupted Document')
       .field('category', 'General')
-      .attach('file', fakeDocxPayload, 'financial_report.docx');
+      .attach('file', fakePdfPayload, 'financial_report.pdf');
 
     expect(res.status).toBe(400);
-    expect(res.body.error).toContain('lacks valid ZIP/OOXML header');
+    expect(res.body.error).toContain('lacks valid %PDF header');
+  });
+
+  it('UPL-03b: Rejects zip-based document extensions (.docx, .xlsx) removed from whitelist', async () => {
+    const docxPayload = Buffer.from([0x50, 0x4B, 0x03, 0x04, 0x00, 0x00]);
+
+    const res = await request(app)
+      .post('/api/documents')
+      .set('Cookie', ownerCookie)
+      .field('title', 'Office Document')
+      .field('category', 'General')
+      .attach('file', docxPayload, 'financial_report.docx');
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('not in the permitted whitelist');
   });
 
   it('UPL-04: Replacing document content preserves historical version record in DocumentVersion', async () => {
@@ -59,7 +74,7 @@ describe('Upload Hardening, Storage Lifecycle & Search Bounding Suite', () => {
     const v1Content = Buffer.from('%PDF-1.4\nVersion 1 Content\n%%EOF');
     const uploadRes = await request(app)
       .post('/api/documents')
-      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('Cookie', ownerCookie)
       .field('title', 'Version Retention Document')
       .field('category', 'General')
       .attach('file', v1Content, 'doc_v1.pdf');
@@ -71,7 +86,7 @@ describe('Upload Hardening, Storage Lifecycle & Search Bounding Suite', () => {
     const v2Content = Buffer.from('%PDF-1.4\nVersion 2 Content Updated\n%%EOF');
     const replaceRes = await request(app)
       .put(`/api/documents/${docId}`)
-      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('Cookie', ownerCookie)
       .attach('file', v2Content, 'doc_v2.pdf');
 
     expect(replaceRes.status).toBe(200);
@@ -79,7 +94,7 @@ describe('Upload Hardening, Storage Lifecycle & Search Bounding Suite', () => {
     // 3. Query versions endpoint (Owner-only)
     const versionsRes = await request(app)
       .get(`/api/documents/${docId}/versions`)
-      .set('Authorization', `Bearer ${ownerToken}`);
+      .set('Cookie', ownerCookie);
 
     expect(versionsRes.status).toBe(200);
     expect(versionsRes.body.versions.length).toBeGreaterThanOrEqual(1);
@@ -89,7 +104,7 @@ describe('Upload Hardening, Storage Lifecycle & Search Bounding Suite', () => {
   it('UPL-05: Broad search queries enforce bounded upper limit (take: 100) preventing heap exhaustion', async () => {
     const searchRes = await request(app)
       .get('/api/documents/search')
-      .set('Authorization', `Bearer ${ownerToken}`);
+      .set('Cookie', ownerCookie);
 
     expect(searchRes.status).toBe(200);
     expect(Array.isArray(searchRes.body.documents)).toBe(true);

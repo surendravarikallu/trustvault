@@ -4,11 +4,12 @@ import { app } from '../src/server';
 import { PermissionLevel, Role, AuditStatus } from '../src/dal/types';
 import { getAuditLogs, verifyAuditChain } from '../src/dal/auditDal';
 import { exportAuditAnchor } from '../src/utils/auditAnchor';
+import { extractAuthCookie } from './testAuth';
 
-let adminToken: string;
-let ownerToken: string; // Alice (Owner)
-let viewerToken: string; // Bob (Authorized Viewer)
-let eveToken: string; // Eve (Adversary / Unshared Viewer)
+let adminCookie: string;
+let ownerCookie: string; // Alice (Owner)
+let viewerCookie: string; // Bob (Authorized Viewer)
+let eveCookie: string; // Eve (Adversary / Unshared Viewer)
 
 let sharedDocId: string; // Doc 1: MSA Acme (shared with Bob)
 let restrictedDocId: string; // Doc 2: Executive Comp (Alice private)
@@ -21,32 +22,32 @@ beforeAll(async () => {
     .post('/api/auth/login')
     .send({ email: 'admin@trustvault.local', password: 'Admin@TrustVault2026!' });
   expect(adminRes.status).toBe(200);
-  adminToken = adminRes.body.token;
+  adminCookie = extractAuthCookie(adminRes);
 
   const ownerRes = await request(app)
     .post('/api/auth/login')
     .send({ email: 'owner@trustvault.local', password: 'Owner@TrustVault2026!' });
   expect(ownerRes.status).toBe(200);
-  ownerToken = ownerRes.body.token;
+  ownerCookie = extractAuthCookie(ownerRes);
 
   const viewerRes = await request(app)
     .post('/api/auth/login')
     .send({ email: 'viewer@trustvault.local', password: 'Viewer@TrustVault2026!' });
   expect(viewerRes.status).toBe(200);
-  viewerToken = viewerRes.body.token;
+  viewerCookie = extractAuthCookie(viewerRes);
   bobUserId = viewerRes.body.user.id;
 
   const eveRes = await request(app)
     .post('/api/auth/login')
     .send({ email: 'eve@trustvault.local', password: 'Eve@TrustVault2026!' });
   expect(eveRes.status).toBe(200);
-  eveToken = eveRes.body.token;
+  eveCookie = extractAuthCookie(eveRes);
   eveUserId = eveRes.body.user.id;
 
   // 2. Fetch Alice's documents to obtain real IDs
   const docsRes = await request(app)
     .get('/api/documents')
-    .set('Authorization', `Bearer ${ownerToken}`);
+    .set('Cookie', ownerCookie);
   expect(docsRes.status).toBe(200);
 
   const doc1 = docsRes.body.documents.find((d: any) => d.title.includes('Master Services Agreement'));
@@ -64,7 +65,7 @@ describe('TrustVault 16-Suite Security & Access Control Engine', () => {
   it('1. test_idor_download_blocked_with_404: Unshared user (Eve) receives 404 on download probe', async () => {
     const res = await request(app)
       .get(`/api/documents/${restrictedDocId}/download`)
-      .set('Authorization', `Bearer ${eveToken}`);
+      .set('Cookie', eveCookie);
 
     // Status Code Contract: Must be 404 (not 403) to prevent document existence enumeration
     expect(res.status).toBe(404);
@@ -75,7 +76,7 @@ describe('TrustVault 16-Suite Security & Access Control Engine', () => {
   it('2. test_idor_metadata_blocked_with_404: Unshared user (Eve) receives 404 on metadata probe', async () => {
     const res = await request(app)
       .get(`/api/documents/${restrictedDocId}`)
-      .set('Authorization', `Bearer ${eveToken}`);
+      .set('Cookie', eveCookie);
 
     expect(res.status).toBe(404);
     expect(res.body.error).toContain('Document not found');
@@ -85,7 +86,7 @@ describe('TrustVault 16-Suite Security & Access Control Engine', () => {
   it('Baseline: Authorized user (Bob) downloads document granted to him (Returns 200)', async () => {
     const res = await request(app)
       .get(`/api/documents/${sharedDocId}/download`)
-      .set('Authorization', `Bearer ${viewerToken}`);
+      .set('Cookie', viewerCookie);
 
     expect(res.status).toBe(200);
     expect(res.header['content-disposition']).toContain('attachment');
@@ -96,25 +97,25 @@ describe('TrustVault 16-Suite Security & Access Control Engine', () => {
     // 1. Verify Bob currently has access
     const beforeRes = await request(app)
       .get(`/api/documents/${sharedDocId}/download`)
-      .set('Authorization', `Bearer ${viewerToken}`);
+      .set('Cookie', viewerCookie);
     expect(beforeRes.status).toBe(200);
 
     // 2. Alice (Owner) revokes Bob's access
     const revokeRes = await request(app)
       .delete(`/api/documents/${sharedDocId}/permissions/${bobUserId}`)
-      .set('Authorization', `Bearer ${ownerToken}`);
+      .set('Cookie', ownerCookie);
     expect(revokeRes.status).toBe(200);
 
     // 3. Bob attempts to download again with existing token -> MUST RETURN 404 IMMEDIATELY!
     const afterRes = await request(app)
       .get(`/api/documents/${sharedDocId}/download`)
-      .set('Authorization', `Bearer ${viewerToken}`);
+      .set('Cookie', viewerCookie);
     expect(afterRes.status).toBe(404);
 
     // 4. Restore Bob's permission for remaining test isolation
     await request(app)
       .post(`/api/documents/${sharedDocId}/permissions`)
-      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('Cookie', ownerCookie)
       .send({
         targetEmail: 'viewer@trustvault.local',
         permissionLevel: PermissionLevel.READ
@@ -127,7 +128,7 @@ describe('TrustVault 16-Suite Security & Access Control Engine', () => {
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const grantRes = await request(app)
       .post(`/api/documents/${sharedDocId}/permissions`)
-      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('Cookie', ownerCookie)
       .send({
         targetEmail: 'eve@trustvault.local',
         permissionLevel: PermissionLevel.READ,
@@ -138,13 +139,13 @@ describe('TrustVault 16-Suite Security & Access Control Engine', () => {
     // Eve attempts to download -> Expired grant evaluated as non-existent (404)
     const res = await request(app)
       .get(`/api/documents/${sharedDocId}/download`)
-      .set('Authorization', `Bearer ${eveToken}`);
+      .set('Cookie', eveCookie);
     expect(res.status).toBe(404);
 
     // Clean up Eve's grant
     await request(app)
       .delete(`/api/documents/${sharedDocId}/permissions/${eveUserId}`)
-      .set('Authorization', `Bearer ${ownerToken}`);
+      .set('Cookie', ownerCookie);
   });
 
   // Test 5: Reader Cannot Edit Document (403 Forbidden) (L-06)
@@ -152,7 +153,7 @@ describe('TrustVault 16-Suite Security & Access Control Engine', () => {
     const fakePdf = Buffer.from('%PDF-1.4\nNew Content Payload\n%%EOF');
     const res = await request(app)
       .put(`/api/documents/${sharedDocId}`)
-      .set('Authorization', `Bearer ${viewerToken}`)
+      .set('Cookie', viewerCookie)
       .attach('file', fakePdf, 'updated.pdf');
 
     // User is visible (active READ grant) but unauthorized for action -> 403 Forbidden
@@ -165,7 +166,7 @@ describe('TrustVault 16-Suite Security & Access Control Engine', () => {
     // Elevate Bob to EDIT
     await request(app)
       .post(`/api/documents/${sharedDocId}/permissions`)
-      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('Cookie', ownerCookie)
       .send({
         targetEmail: 'viewer@trustvault.local',
         permissionLevel: PermissionLevel.EDIT
@@ -174,7 +175,7 @@ describe('TrustVault 16-Suite Security & Access Control Engine', () => {
     // Bob attempts to grant access to Eve
     const res = await request(app)
       .post(`/api/documents/${sharedDocId}/permissions`)
-      .set('Authorization', `Bearer ${viewerToken}`)
+      .set('Cookie', viewerCookie)
       .send({
         targetEmail: 'eve@trustvault.local',
         permissionLevel: PermissionLevel.READ
@@ -186,7 +187,7 @@ describe('TrustVault 16-Suite Security & Access Control Engine', () => {
     // Restore Bob to READ
     await request(app)
       .post(`/api/documents/${sharedDocId}/permissions`)
-      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('Cookie', ownerCookie)
       .send({
         targetEmail: 'viewer@trustvault.local',
         permissionLevel: PermissionLevel.READ
@@ -197,7 +198,7 @@ describe('TrustVault 16-Suite Security & Access Control Engine', () => {
   it('7. test_admin_cannot_download_without_grant: Admin receives 403 when probing private document content', async () => {
     const res = await request(app)
       .get(`/api/documents/${restrictedDocId}/download`)
-      .set('Authorization', `Bearer ${adminToken}`);
+      .set('Cookie', adminCookie);
 
     // Admin has metadata rights, but downloads require explicit owner grant
     expect(res.status).toBe(403);
@@ -209,7 +210,7 @@ describe('TrustVault 16-Suite Security & Access Control Engine', () => {
     const fakePdf = Buffer.from('%PDF-1.4\nViewer Upload Attempt\n%%EOF');
     const res = await request(app)
       .post('/api/documents')
-      .set('Authorization', `Bearer ${viewerToken}`)
+      .set('Cookie', viewerCookie)
       .field('title', 'Unauthorized Viewer Document')
       .field('category', 'General')
       .attach('file', fakePdf, 'viewer_doc.pdf');
@@ -222,7 +223,7 @@ describe('TrustVault 16-Suite Security & Access Control Engine', () => {
   it('9. test_path_traversal_blocked: Path traversal sequences in document ID are rejected with 400', async () => {
     const res = await request(app)
       .get('/api/documents/..%2F..%2Fetc%2Fpasswd/download')
-      .set('Authorization', `Bearer ${viewerToken}`);
+      .set('Cookie', viewerCookie);
 
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('Path traversal');
@@ -239,7 +240,7 @@ describe('TrustVault 16-Suite Security & Access Control Engine', () => {
     const fakeExe = Buffer.from('MZ\x90\x00\x03\x00\x00\x00DisguisedMalwarePayload');
     const res = await request(app)
       .post('/api/documents')
-      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('Cookie', ownerCookie)
       .field('title', 'Disguised Malware Document')
       .field('category', 'General')
       .attach('file', fakeExe, 'innocent_report.pdf');
@@ -253,7 +254,7 @@ describe('TrustVault 16-Suite Security & Access Control Engine', () => {
     const fakeUuid = '00000000-0000-0000-0000-000000000000';
     const res = await request(app)
       .get(`/api/documents/${fakeUuid}/download`)
-      .set('Authorization', `Bearer ${viewerToken}`);
+      .set('Cookie', viewerCookie);
 
     expect(res.status).toBe(404);
 
@@ -268,7 +269,7 @@ describe('TrustVault 16-Suite Security & Access Control Engine', () => {
     // Restricted doc contains 'Executive Compensation'
     const res = await request(app)
       .get('/api/documents/search?q=Compensation')
-      .set('Authorization', `Bearer ${eveToken}`);
+      .set('Cookie', eveCookie);
 
     expect(res.status).toBe(200);
     expect(res.body.documents.length).toBe(0);
@@ -295,33 +296,33 @@ describe('TrustVault 16-Suite Security & Access Control Engine', () => {
   });
 
   // Test 15: Token Version Invalidation on Demotion (L-01)
-  it('15. test_token_version_invalidation_on_demotion: Changing role immediately invalidates active JWT', async () => {
+  it('15. test_token_version_invalidation_on_demotion: Changing role immediately invalidates active session', async () => {
     // 1. Create a temporary user and login
     const tempEmail = `demote_test_${Date.now()}@trustvault.local`;
     const regRes = await request(app)
       .post('/api/auth/register')
       .send({ email: tempEmail, password: 'Password123!', name: 'Demote Target' });
     expect(regRes.status).toBe(201);
-    const tempToken = regRes.body.token;
+    const tempCookie = extractAuthCookie(regRes);
     const tempUserId = regRes.body.user.id;
 
-    // 2. Verify token is valid
+    // 2. Verify cookie session is valid
     const meBefore = await request(app)
       .get('/api/auth/me')
-      .set('Authorization', `Bearer ${tempToken}`);
+      .set('Cookie', tempCookie);
     expect(meBefore.status).toBe(200);
 
     // 3. Admin promotes user to OWNER (which bumps tokenVersion)
     const roleRes = await request(app)
       .patch(`/api/admin/users/${tempUserId}/role`)
-      .set('Authorization', `Bearer ${adminToken}`)
+      .set('Cookie', adminCookie)
       .send({ role: Role.OWNER });
     expect(roleRes.status).toBe(200);
 
-    // 4. Existing JWT must be rejected immediately on subsequent call (Returns 401)
+    // 4. Existing session cookie must be rejected immediately on subsequent call (Returns 401)
     const meAfter = await request(app)
       .get('/api/auth/me')
-      .set('Authorization', `Bearer ${tempToken}`);
+      .set('Cookie', tempCookie);
     expect(meAfter.status).toBe(401);
     expect(meAfter.body.error).toContain('Session revoked');
   });

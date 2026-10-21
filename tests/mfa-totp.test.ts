@@ -1,9 +1,8 @@
 import request from 'supertest';
 import { app } from '../src/server';
 import { generateTOTP } from '../src/utils/totp';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../src/prisma';
+import { extractAuthCookie } from './testAuth';
 
 describe('Multi-Factor Authentication (MFA / TOTP) Enterprise Suite', () => {
   const testUser = {
@@ -12,7 +11,7 @@ describe('Multi-Factor Authentication (MFA / TOTP) Enterprise Suite', () => {
     name: 'MFA Tester Account'
   };
 
-  let authToken: string;
+  let authCookie: string;
   let mfaSecret: string;
   let backupCodes: string[];
 
@@ -31,15 +30,15 @@ describe('Multi-Factor Authentication (MFA / TOTP) Enterprise Suite', () => {
       .send({ email: testUser.email, password: testUser.password });
 
     expect(loginRes.status).toBe(200);
-    expect(loginRes.body.token).toBeDefined();
+    expect(loginRes.body.token).toBeUndefined();
     expect(loginRes.body.mfaRequired).toBeUndefined();
-    authToken = loginRes.body.token;
+    authCookie = extractAuthCookie(loginRes);
   });
 
   it('MFA-01: Initiating setup generates Base32 secret and QR code data URL', async () => {
     const res = await request(app)
       .post('/api/auth/mfa/setup')
-      .set('Authorization', `Bearer ${authToken}`);
+      .set('Cookie', authCookie);
 
     expect(res.status).toBe(200);
     expect(res.body.secret).toBeDefined();
@@ -53,7 +52,7 @@ describe('Multi-Factor Authentication (MFA / TOTP) Enterprise Suite', () => {
   it('MFA-02: Submitting an invalid 6-digit TOTP code during confirmation is rejected with HTTP 400', async () => {
     const res = await request(app)
       .post('/api/auth/mfa/verify-setup')
-      .set('Authorization', `Bearer ${authToken}`)
+      .set('Cookie', authCookie)
       .send({ code: '000000' });
 
     expect(res.status).toBe(400);
@@ -65,7 +64,7 @@ describe('Multi-Factor Authentication (MFA / TOTP) Enterprise Suite', () => {
 
     const res = await request(app)
       .post('/api/auth/mfa/verify-setup')
-      .set('Authorization', `Bearer ${authToken}`)
+      .set('Cookie', authCookie)
       .send({ code: validTotp });
 
     expect(res.status).toBe(200);
@@ -89,13 +88,13 @@ describe('Multi-Factor Authentication (MFA / TOTP) Enterprise Suite', () => {
     // Verify restricted challenge token cannot access protected document routes
     const docProbe = await request(app)
       .get('/api/documents')
-      .set('Authorization', `Bearer ${loginRes.body.mfaChallengeToken}`);
+      .set('Cookie', `__Host-trustvault_token=${loginRes.body.mfaChallengeToken}`);
 
     // Must be rejected because challenge token has no session credentials
     expect(docProbe.status).toBe(401);
   });
 
-  it('MFA-05: Submitting valid TOTP completes challenge and grants full 8-hour session token', async () => {
+  it('MFA-05: Submitting valid TOTP completes challenge and sets full session cookie', async () => {
     const loginRes = await request(app)
       .post('/api/auth/login')
       .send({ email: testUser.email, password: testUser.password });
@@ -111,7 +110,8 @@ describe('Multi-Factor Authentication (MFA / TOTP) Enterprise Suite', () => {
       });
 
     expect(verifyRes.status).toBe(200);
-    expect(verifyRes.body.token).toBeDefined();
+    expect(verifyRes.body.token).toBeUndefined();
+    expect(verifyRes.headers['set-cookie']).toBeDefined();
     expect(verifyRes.body.user.email).toBe(testUser.email);
   });
 
@@ -166,7 +166,8 @@ describe('Multi-Factor Authentication (MFA / TOTP) Enterprise Suite', () => {
       });
 
     expect(firstUseRes.status).toBe(200);
-    expect(firstUseRes.body.token).toBeDefined();
+    expect(firstUseRes.body.token).toBeUndefined();
+    expect(firstUseRes.headers['set-cookie']).toBeDefined();
 
     // Second use of the exact same backup code on a new challenge: MUST FAIL
     const secondLoginRes = await request(app)
@@ -187,7 +188,7 @@ describe('Multi-Factor Authentication (MFA / TOTP) Enterprise Suite', () => {
   });
 
   it('MFA-08: Disabling MFA requires dual verification (password + TOTP); invalidates sessions on success', async () => {
-    // Acquire a fresh session token using another backup code
+    // Acquire a fresh session cookie using another backup code
     const loginRes = await request(app)
       .post('/api/auth/login')
       .send({ email: testUser.email, password: testUser.password });
@@ -199,12 +200,12 @@ describe('Multi-Factor Authentication (MFA / TOTP) Enterprise Suite', () => {
         code: backupCodes[1]
       });
 
-    const activeSessionToken = sessionRes.body.token;
+    const activeSessionCookie = extractAuthCookie(sessionRes);
 
     // Attempt to disable with wrong password: must fail
     const wrongPassRes = await request(app)
       .post('/api/auth/mfa/disable')
-      .set('Authorization', `Bearer ${activeSessionToken}`)
+      .set('Cookie', activeSessionCookie)
       .send({ password: 'WrongPassword!', code: generateTOTP(mfaSecret) });
 
     expect(wrongPassRes.status).toBe(401);
@@ -212,19 +213,20 @@ describe('Multi-Factor Authentication (MFA / TOTP) Enterprise Suite', () => {
     // Disable with correct password and valid TOTP: must succeed
     const disableRes = await request(app)
       .post('/api/auth/mfa/disable')
-      .set('Authorization', `Bearer ${activeSessionToken}`)
+      .set('Cookie', activeSessionCookie)
       .send({ password: testUser.password, code: generateTOTP(mfaSecret) });
 
     expect(disableRes.status).toBe(200);
     expect(disableRes.body.success).toBe(true);
 
-    // Subsequent login now bypasses MFA (returns session token immediately)
+    // Subsequent login now bypasses MFA (sets session cookie immediately)
     const subsequentLogin = await request(app)
       .post('/api/auth/login')
       .send({ email: testUser.email, password: testUser.password });
 
     expect(subsequentLogin.status).toBe(200);
-    expect(subsequentLogin.body.token).toBeDefined();
+    expect(subsequentLogin.body.token).toBeUndefined();
+    expect(subsequentLogin.headers['set-cookie']).toBeDefined();
     expect(subsequentLogin.body.mfaRequired).toBeUndefined();
   });
 
@@ -261,7 +263,8 @@ describe('Multi-Factor Authentication (MFA / TOTP) Enterprise Suite', () => {
       .send({ mfaEnrollToken: enrollToken, code: validCode });
 
     expect(confirmRes.status).toBe(200);
-    expect(confirmRes.body.token).toBeDefined();
+    expect(confirmRes.body.token).toBeUndefined();
+    expect(confirmRes.headers['set-cookie']).toBeDefined();
     expect(confirmRes.body.backupCodes).toHaveLength(8);
 
     // Subsequent standard login now requires MFA challenge (never bypasses straight to app)
@@ -283,4 +286,3 @@ describe('Multi-Factor Authentication (MFA / TOTP) Enterprise Suite', () => {
     await prisma.$disconnect();
   });
 });
-

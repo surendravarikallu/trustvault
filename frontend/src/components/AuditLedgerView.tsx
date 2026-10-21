@@ -21,11 +21,9 @@ import {
 import type { AuditRecord, AuditVerification } from '../types';
 import { fetchAuditLogs, verifyAuditLedger } from '../api';
 
-interface AuditLedgerViewProps {
-  token: string;
-}
+interface AuditLedgerViewProps {}
 
-export const AuditLedgerView: React.FC<AuditLedgerViewProps> = ({ token }) => {
+export const AuditLedgerView: React.FC<AuditLedgerViewProps> = () => {
   const [logs, setLogs] = useState<AuditRecord[]>([]);
   const [verification, setVerification] = useState<AuditVerification | null>(null);
   const [selectedAction, setSelectedAction] = useState<string>('');
@@ -42,8 +40,8 @@ export const AuditLedgerView: React.FC<AuditLedgerViewProps> = ({ token }) => {
     setIsLoading(true);
     try {
       const [logsData, verifyData] = await Promise.all([
-        fetchAuditLogs(token, selectedAction ? { action: selectedAction } : undefined),
-        verifyAuditLedger(token)
+        fetchAuditLogs(selectedAction ? { action: selectedAction } : undefined),
+        verifyAuditLedger()
       ]);
       setLogs(logsData.logs || []);
       setVerification(verifyData);
@@ -57,7 +55,7 @@ export const AuditLedgerView: React.FC<AuditLedgerViewProps> = ({ token }) => {
   const handleManualVerify = async () => {
     setIsVerifying(true);
     try {
-      const verifyData = await verifyAuditLedger(token);
+      const verifyData = await verifyAuditLedger();
       setVerification(verifyData);
     } catch (err: any) {
       console.error('Verification error:', err);

@@ -1,8 +1,6 @@
 import request from 'supertest';
 import { app } from '../src/server';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../src/prisma';
 import { StorageService } from '../src/services/storageService';
 import { applyForensicWatermark, protectPdfWithPassword, encodeSteganographicPayload, MAX_JIT_PDF_SIZE_BYTES } from '../src/utils/pdfEngine';
 import { getRequestContext } from '../src/controllers/documentController';
@@ -12,11 +10,13 @@ import { config } from '../src/config';
 import fs from 'fs';
 import path from 'path';
 import { PDFDocument } from 'pdf-lib';
+import { extractAuthCookie } from './testAuth';
 
 describe('Hardened Attack Vectors Defense Suite (Threats T-48 to T-53)', () => {
   let ownerUser: any;
   let testDoc: any;
-  let ownerToken: string;
+  let ownerCookie: string;
+  let rawSetCookie: string;
 
   beforeAll(async () => {
     const ownerRes = await request(app)
@@ -25,7 +25,10 @@ describe('Hardened Attack Vectors Defense Suite (Threats T-48 to T-53)', () => {
 
     if (ownerRes.status === 200) {
       ownerUser = ownerRes.body.user;
-      ownerToken = ownerRes.body.token;
+      rawSetCookie = Array.isArray(ownerRes.headers['set-cookie'])
+        ? ownerRes.headers['set-cookie'][0]
+        : ownerRes.headers['set-cookie'];
+      ownerCookie = rawSetCookie.split(';')[0];
     } else {
       ownerUser = await prisma.user.upsert({
         where: { email: 'alice.hardened@trustvault.local' },
@@ -38,11 +41,13 @@ describe('Hardened Attack Vectors Defense Suite (Threats T-48 to T-53)', () => {
           tokenVersion: 1
         }
       });
-      ownerToken = jwt.sign(
+      const token = jwt.sign(
         { userId: ownerUser.id, tokenVersion: 1 },
         config.jwtSecret,
         { expiresIn: '1h', algorithm: 'HS256' }
       );
+      ownerCookie = `__Host-trustvault_token=${token}`;
+      rawSetCookie = `__Host-trustvault_token=${token}; Path=/; HttpOnly; Secure; SameSite=Lax`;
     }
 
     // Create a real valid PDF for tests
@@ -74,24 +79,96 @@ describe('Hardened Attack Vectors Defense Suite (Threats T-48 to T-53)', () => {
   });
 
   afterAll(async () => {
+    if (testDoc?.id) {
+      await prisma.documentPermission.deleteMany({ where: { documentId: testDoc.id } });
+      await prisma.document.deleteMany({ where: { id: testDoc.id } });
+    }
     await prisma.$disconnect();
   });
 
-  // --- ATTACK 1 (T-48): CSRF on Cookie Sessions (CWE-352) ---
-  describe('T-48: Cross-Site Request Forgery (CSRF) Mitigation', () => {
-    it('CSRF-01: Rejects cookie-authenticated state-mutating request without X-TrustVault-Client header or valid origin', async () => {
-      // Simulate cross-site POST initiated with victim session cookie from malicious-site.com
+  // --- SINGLE CREDENTIAL PATH & COOKIE HARDENING ---
+  describe('Single Credential Path & __Host- Cookie Isolation', () => {
+    it('AUTH-CK-01: Login response body contains NO token field (zero JS token exposure)', async () => {
       const res = await request(app)
-        .delete(`/api/documents/${testDoc.id}`)
-        .set('Cookie', [`trustvault_token=${ownerToken}`])
-        .set('Origin', 'https://malicious-attacker.com');
+        .post('/api/auth/login')
+        .send({ email: 'owner@trustvault.local', password: 'Owner@TrustVault2026!' });
 
-      expect(res.status).toBe(403);
-      expect(res.body.error).toMatch(/CSRF validation failed/i);
+      expect(res.status).toBe(200);
+      expect(res.body.token).toBeUndefined();
+      expect(res.body.user).toBeDefined();
     });
 
-    it('CSRF-02: Permits cookie-authenticated mutating request when X-TrustVault-Client: 1 header is provided', async () => {
-      // Create a dummy document to delete
+    it('AUTH-CK-02: Exactly one cookie is set: __Host-trustvault_token with HttpOnly, Secure, Path=/, and NO Domain attribute', async () => {
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({ email: 'owner@trustvault.local', password: 'Owner@TrustVault2026!' });
+
+      const cookies = res.headers['set-cookie'];
+      expect(cookies).toBeDefined();
+      expect(Array.isArray(cookies) ? cookies.length : 1).toBe(1);
+
+      const cookieHeader = Array.isArray(cookies) ? cookies[0] : cookies;
+      expect(cookieHeader).toContain('__Host-trustvault_token=');
+      expect(cookieHeader).not.toContain('trustvault_token=s:'); // Legacy plain cookie must be absent
+      expect(cookieHeader.toLowerCase()).toContain('httponly');
+      expect(cookieHeader.toLowerCase()).toContain('secure');
+      expect(cookieHeader.toLowerCase()).toContain('samesite=lax');
+      expect(cookieHeader).toContain('Path=/');
+      // __Host- cookies MUST NOT specify a Domain attribute
+      expect(cookieHeader.toLowerCase()).not.toContain('domain=');
+    });
+
+    it('AUTH-CK-03: Rejects requests using Authorization: Bearer fallback (only __Host- cookie accepted)', async () => {
+      // Craft a valid JWT token
+      const token = jwt.sign(
+        { userId: ownerUser.id, tokenVersion: 1 },
+        config.jwtSecret,
+        { expiresIn: '1h', algorithm: 'HS256' }
+      );
+
+      const res = await request(app)
+        .get('/api/auth/me')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(401);
+      expect(res.body.error).toContain('Missing secure __Host- session cookie');
+    });
+
+    it('AUTH-CK-04: Rejects requests providing only the legacy insecure trustvault_token cookie', async () => {
+      const token = jwt.sign(
+        { userId: ownerUser.id, tokenVersion: 1 },
+        config.jwtSecret,
+        { expiresIn: '1h', algorithm: 'HS256' }
+      );
+
+      const res = await request(app)
+        .get('/api/auth/me')
+        .set('Cookie', `trustvault_token=${token}`);
+
+      expect(res.status).toBe(401);
+      expect(res.body.error).toContain('Missing secure __Host- session cookie');
+    });
+  });
+
+  // --- ATTACK 1 (T-48): CSRF on Cookie Sessions (CWE-352) ---
+  describe('T-48: Cross-Site Request Forgery (CSRF) & Origin Validation', () => {
+    it('CSRF-01: Rejects cross-origin state-mutating POST/DELETE with Origin: https://evil.example with 403 and zero mutation', async () => {
+      const docCountBefore = await prisma.document.count();
+
+      const res = await request(app)
+        .delete(`/api/documents/${testDoc.id}`)
+        .set('Cookie', ownerCookie)
+        .set('Origin', 'https://evil.example');
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toMatch(/CSRF validation failed: Cross-origin request rejected/i);
+
+      // Verify zero state change: document was NOT deleted
+      const docCountAfter = await prisma.document.count();
+      expect(docCountAfter).toBe(docCountBefore);
+    });
+
+    it('CSRF-02: Permits same-origin or localhost mutating requests', async () => {
       const dummy = await prisma.document.create({
         data: {
           title: 'Dummy to delete',
@@ -107,33 +184,47 @@ describe('Hardened Attack Vectors Defense Suite (Threats T-48 to T-53)', () => {
 
       const res = await request(app)
         .delete(`/api/documents/${dummy.id}`)
-        .set('Cookie', [`trustvault_token=${ownerToken}`])
-        .set('X-TrustVault-Client', '1');
+        .set('Cookie', ownerCookie)
+        .set('Origin', 'http://127.0.0.1:7777')
+        .set('Host', '127.0.0.1:7777');
 
       expect(res.status).toBe(200);
       expect(res.body.message).toMatch(/Document soft-deleted successfully/i);
     });
+  });
 
-    it('CSRF-03: Allows API clients using Authorization: Bearer without cookie', async () => {
-      const dummy2 = await prisma.document.create({
-        data: {
-          title: 'Dummy Bearer Test',
-          category: 'MISC',
-          originalFilename: 'dummy2.txt',
-          storedFilename: 'non-existent',
-          mimeType: 'text/plain',
-          fileSize: 10,
-          fileHash: 'fakehash2',
-          ownerId: ownerUser.id
-        }
-      });
-
+  // --- CORS & CSP HARDENING ---
+  describe('CORS Removal & Pinned CSP Directives', () => {
+    it('CORS-01: Access-Control-Allow-Origin is absent even when Origin: https://evil.example is passed', async () => {
       const res = await request(app)
-        .delete(`/api/documents/${dummy2.id}`)
-        .set('Authorization', `Bearer ${ownerToken}`);
+        .get('/api/auth/me')
+        .set('Origin', 'https://evil.example');
 
-      expect(res.status).toBe(200);
-      expect(res.body.message).toMatch(/Document soft-deleted successfully/i);
+      expect(res.headers['access-control-allow-origin']).toBeUndefined();
+      expect(res.headers['access-control-allow-credentials']).toBeUndefined();
+    });
+
+    it('CSP-01: CSP header strictly enforces pinned sources with no generic https: in style-src or font-src', async () => {
+      const res = await request(app).get('/api/health');
+      const csp = res.headers['content-security-policy'];
+
+      expect(csp).toBeDefined();
+      expect(csp).toContain("default-src 'self'");
+      expect(csp).toContain("object-src 'none'");
+      expect(csp).toContain("frame-ancestors 'none'");
+      expect(csp).toContain("script-src-attr 'none'");
+      expect(csp).toContain("base-uri 'self'");
+
+      // Verify pinned font-src and style-src without open https: wildcard
+      const directives = csp.split(';').map((d: string) => d.trim());
+      const styleDirective = directives.find((d: string) => d.startsWith('style-src '));
+      const fontDirective = directives.find((d: string) => d.startsWith('font-src '));
+
+      expect(styleDirective).toBeDefined();
+      expect(styleDirective).not.toMatch(/https:(?!\/\/)/); // No open `https:` scheme
+      expect(fontDirective).toBeDefined();
+      expect(fontDirective).not.toMatch(/https:(?!\/\/)/);
+      expect(csp).not.toContain('cloudflareinsights.com');
     });
   });
 
@@ -168,31 +259,29 @@ describe('Hardened Attack Vectors Defense Suite (Threats T-48 to T-53)', () => {
   describe('T-51: Reverse Proxy IP Header Spoofing Shield', () => {
     it('IP-SPOOF-01: Ignores cf-connecting-ip from non-loopback untrusted remote socket', () => {
       const mockReq: any = {
-        socket: { remoteAddress: '203.0.113.50' }, // External Internet IP
+        socket: { remoteAddress: '203.0.113.50' },
         headers: {
-          'cf-connecting-ip': '8.8.8.8', // Spoofed header
+          'cf-connecting-ip': '8.8.8.8',
           'user-agent': 'Mozilla/5.0 Test'
         },
         ip: '203.0.113.50'
       };
 
       const ctx = getRequestContext(mockReq);
-      // Must NOT trust the spoofed 8.8.8.8 header
       expect(ctx.ip).toBe('203.0.113.50');
     });
 
     it('IP-SPOOF-02: Rejects malformed or payload-injected IP headers even from loopback proxy', () => {
       const mockReq: any = {
-        socket: { remoteAddress: '127.0.0.1' }, // Local reverse proxy
+        socket: { remoteAddress: '127.0.0.1' },
         headers: {
-          'cf-connecting-ip': '1.2.3.4<script>alert(1)</script>', // Injected payload
+          'cf-connecting-ip': '1.2.3.4<script>alert(1)</script>',
           'user-agent': 'Safe UA'
         },
         ip: '127.0.0.1'
       };
 
       const ctx = getRequestContext(mockReq);
-      // Must fall back to safe loopback IP and not reflect script payload
       expect(ctx.ip).toBe('127.0.0.1');
     });
 
@@ -235,7 +324,6 @@ describe('Hardened Attack Vectors Defense Suite (Threats T-48 to T-53)', () => {
     it('STEGO-01: Correctly encodes provenance string into zero-width characters', () => {
       const encoded = encodeSteganographicPayload('TV:user@trustvault.local');
       expect(encoded.length).toBeGreaterThan(0);
-      // Must contain only zero-width space (\u200B) and zero-width non-joiner (\u200C)
       for (const char of encoded) {
         expect(['\u200B', '\u200C']).toContain(char);
       }
@@ -260,31 +348,29 @@ describe('Hardened Attack Vectors Defense Suite (Threats T-48 to T-53)', () => {
     });
   });
 
-  // --- SECURITY HEADERS & PREVIEW/DOWNLOAD AUDIT PARITY ---
-  describe('Security Headers & Preview/Download Audit Parity', () => {
-    it('HDR-01: Response contains strict Content-Security-Policy with object-src none, frame-ancestors none, script-src-attr none', async () => {
-      const res = await request(app).get('/api/health');
-      const csp = res.headers['content-security-policy'];
-
-      expect(csp).toBeDefined();
-      expect(csp).toContain("default-src 'self'");
-      expect(csp).toContain("object-src 'none'");
-      expect(csp).toContain("frame-ancestors 'none'");
-      expect(csp).toContain("script-src-attr 'none'");
-      expect(csp).toContain("base-uri 'self'");
-    });
-
+  // --- DOWNLOAD SECURITY & PREVIEW DEPLOYMENT RESTRICTION ---
+  describe('Download Security & Preview Elimination', () => {
     it('HDR-02: Document download response strictly asserts X-Content-Type-Options: nosniff', async () => {
       const res = await request(app)
         .get(`/api/documents/${testDoc.id}/download`)
-        .set('Authorization', `Bearer ${ownerToken}`);
+        .set('Cookie', ownerCookie);
 
       expect(res.status).toBe(200);
       expect(res.headers['x-content-type-options']).toBe('nosniff');
     });
 
-    it('AUD-PRV-01: Both preview and raw download return 404 to an unshared user and both log ACCESS_DENIED audit rows', async () => {
-      // Create a stranger user with no access to testDoc
+    it('PRV-01: ?preview=true behaves identically to plain download (attachment header, octet-stream)', async () => {
+      const res = await request(app)
+        .get(`/api/documents/${testDoc.id}/download?preview=true`)
+        .set('Cookie', ownerCookie);
+
+      expect(res.status).toBe(200);
+      // Strictly download-only model: Never inline
+      expect(res.headers['content-disposition']).toContain('attachment');
+      expect(res.headers['content-type']).toContain('application/octet-stream');
+    });
+
+    it('AUD-PRV-01: Both ?preview=true and raw download return 404 to an unshared user and log ACCESS_DENIED', async () => {
       const stranger = await prisma.user.upsert({
         where: { email: 'stranger.audit@trustvault.local' },
         update: {},
@@ -301,17 +387,18 @@ describe('Hardened Attack Vectors Defense Suite (Threats T-48 to T-53)', () => {
         config.jwtSecret,
         { expiresIn: '1h', algorithm: 'HS256' }
       );
+      const strangerCookie = `__Host-trustvault_token=${strangerToken}`;
 
       // Probe raw download
       const dlRes = await request(app)
         .get(`/api/documents/${testDoc.id}/download`)
-        .set('Authorization', `Bearer ${strangerToken}`);
+        .set('Cookie', strangerCookie);
       expect(dlRes.status).toBe(404);
 
-      // Probe preview route
+      // Probe preview parameter
       const prvRes = await request(app)
         .get(`/api/documents/${testDoc.id}/download?preview=true`)
-        .set('Authorization', `Bearer ${strangerToken}`);
+        .set('Cookie', strangerCookie);
       expect(prvRes.status).toBe(404);
 
       // Verify audit rows were recorded for both probes
@@ -324,36 +411,6 @@ describe('Hardened Attack Vectors Defense Suite (Threats T-48 to T-53)', () => {
       });
 
       expect(auditRows.length).toBeGreaterThanOrEqual(2);
-    });
-
-    it('AUD-PRV-02: Both preview and raw download record DOCUMENT_DOWNLOAD audit event with recipient tracking', async () => {
-      const initialLogs = await prisma.auditLog.count({
-        where: {
-          documentId: testDoc.id,
-          action: 'DOCUMENT_DOWNLOAD_STARTED'
-        }
-      });
-
-      // 1. In-browser preview fetch
-      const prvRes = await request(app)
-        .get(`/api/documents/${testDoc.id}/download?preview=true`)
-        .set('Authorization', `Bearer ${ownerToken}`);
-      expect(prvRes.status).toBe(200);
-
-      // 2. Binary download fetch
-      const dlRes = await request(app)
-        .get(`/api/documents/${testDoc.id}/download`)
-        .set('Authorization', `Bearer ${ownerToken}`);
-      expect(dlRes.status).toBe(200);
-
-      const postLogs = await prisma.auditLog.count({
-        where: {
-          documentId: testDoc.id,
-          action: 'DOCUMENT_DOWNLOAD_STARTED'
-        }
-      });
-
-      expect(postLogs).toBe(initialLogs + 2);
     });
   });
 });

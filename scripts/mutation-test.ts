@@ -6,7 +6,7 @@ const TARGET_FILE = path.resolve(__dirname, '../src/dal/documentDal.ts');
 
 function runTests(): { success: boolean; output: string } {
   try {
-    const output = execSync('npx jest tests/security.test.ts --runInBand', {
+    const output = execSync('npx jest tests/security.test.ts --runInBand --forceExit', {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe']
     });

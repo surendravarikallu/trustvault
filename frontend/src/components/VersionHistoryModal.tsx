@@ -7,14 +7,12 @@ interface VersionHistoryModalProps {
   isOpen: boolean;
   onClose: () => void;
   document: VaultDocument | null;
-  token: string;
 }
 
 export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
   isOpen,
   onClose,
-  document,
-  token
+  document
 }) => {
   const [versions, setVersions] = useState<DocumentVersionInfo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -32,7 +30,7 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
     setIsLoading(true);
     setError(null);
     try {
-      const data = await fetchDocumentVersions(document.id, token);
+      const data = await fetchDocumentVersions(document.id);
       setVersions(data);
     } catch (err: any) {
       setError(err.message || 'Failed to load version history.');

@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeAll } from '@jest/globals';
-import { PrismaClient, AuditStatus } from '@prisma/client';
+import { AuditStatus } from '@prisma/client';
+import { prisma } from '../src/prisma';
 import { logAuditEvent, verifyAuditChain } from '../src/services/auditService';
 import { exportAuditAnchor } from '../src/utils/auditAnchor';
-
-const prisma = new PrismaClient();
 
 describe('Cryptographic Audit Ledger Verification Suite', () => {
   it('L-10 & L-14: Successfully logs sequential audit events with valid HMAC chain', async () => {

@@ -2,58 +2,59 @@ import { describe, it, expect, beforeAll } from '@jest/globals';
 import request from 'supertest';
 import { app } from '../src/server';
 import { Role, PermissionLevel } from '../src/dal/types';
+import { extractAuthCookie } from './testAuth';
 
-let adminToken: string;
-let ownerToken: string;
-let viewerToken: string;
-let eveToken: string;
+let adminCookie: string;
+let ownerCookie: string;
+let viewerCookie: string;
+let eveCookie: string;
 
 beforeAll(async () => {
   // Authenticate base personas
   const adminRes = await request(app)
     .post('/api/auth/login')
     .send({ email: 'admin@trustvault.local', password: 'Admin@TrustVault2026!' });
-  adminToken = adminRes.body.token;
+  adminCookie = extractAuthCookie(adminRes);
 
   const ownerRes = await request(app)
     .post('/api/auth/login')
     .send({ email: 'owner@trustvault.local', password: 'Owner@TrustVault2026!' });
-  ownerToken = ownerRes.body.token;
+  ownerCookie = extractAuthCookie(ownerRes);
 
   const viewerRes = await request(app)
     .post('/api/auth/login')
     .send({ email: 'viewer@trustvault.local', password: 'Viewer@TrustVault2026!' });
-  viewerToken = viewerRes.body.token;
+  viewerCookie = extractAuthCookie(viewerRes);
 
   const eveRes = await request(app)
     .post('/api/auth/login')
     .send({ email: 'eve@trustvault.local', password: 'Eve@TrustVault2026!' });
-  eveToken = eveRes.body.token;
+  eveCookie = extractAuthCookie(eveRes);
 });
 
 describe('Identity, Session Revocation & Privilege Matrix Suite', () => {
-  it('ID-01: Deactivating user immediately severs active JWT session (HTTP 401)', async () => {
+  it('ID-01: Deactivating user immediately severs active session cookie (HTTP 401)', async () => {
     // 1. Create a temporary user and login
     const tempEmail = `deact_user_${Date.now()}@trustvault.local`;
     const regRes = await request(app)
       .post('/api/auth/register')
       .send({ email: tempEmail, password: 'Password123!', name: 'Deactivate Target' });
     expect(regRes.status).toBe(201);
-    const token = regRes.body.token;
+    const cookie = extractAuthCookie(regRes);
     const userId = regRes.body.user.id;
 
-    // 2. Confirm token is initially valid
-    const meBefore = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${token}`);
+    // 2. Confirm cookie session is initially valid
+    const meBefore = await request(app).get('/api/auth/me').set('Cookie', cookie);
     expect(meBefore.status).toBe(200);
 
     // 3. Admin deactivates the user
     const deactRes = await request(app)
       .post(`/api/admin/users/${userId}/deactivate`)
-      .set('Authorization', `Bearer ${adminToken}`);
+      .set('Cookie', adminCookie);
     expect(deactRes.status).toBe(200);
 
-    // 4. Confirm subsequent call with same token is blocked immediately
-    const meAfter = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${token}`);
+    // 4. Confirm subsequent call with same cookie is blocked immediately
+    const meAfter = await request(app).get('/api/auth/me').set('Cookie', cookie);
     expect(meAfter.status).toBe(401);
     expect(meAfter.body.error).toContain('inactive');
   });
@@ -83,19 +84,19 @@ describe('Identity, Session Revocation & Privilege Matrix Suite', () => {
     // Fetch Alice's document
     const docsRes = await request(app)
       .get('/api/documents')
-      .set('Authorization', `Bearer ${ownerToken}`);
+      .set('Cookie', ownerCookie);
     const docId = docsRes.body.documents[0].id;
 
     // Alice grants EDIT to Bob
     await request(app)
       .post(`/api/documents/${docId}/permissions`)
-      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('Cookie', ownerCookie)
       .send({ targetEmail: 'viewer@trustvault.local', permissionLevel: PermissionLevel.EDIT });
 
     // Bob (Editor) attempts to grant permissions to Eve
     const bobGrantRes = await request(app)
       .post(`/api/documents/${docId}/permissions`)
-      .set('Authorization', `Bearer ${viewerToken}`)
+      .set('Cookie', viewerCookie)
       .send({ targetEmail: 'eve@trustvault.local', permissionLevel: PermissionLevel.READ });
 
     // Must be 403 Forbidden: Only Owner can manage permissions
@@ -107,7 +108,7 @@ describe('Identity, Session Revocation & Privilege Matrix Suite', () => {
     // Probing user lookup with partial/wildcard
     const probeRes = await request(app)
       .get('/api/auth/lookup?email=*')
-      .set('Authorization', `Bearer ${viewerToken}`);
+      .set('Cookie', viewerCookie);
 
     // Rejection: Exact match required; wildcards do not enumerate accounts
     expect(probeRes.status).toBe(404);

@@ -13,8 +13,8 @@ const CSRF_EXEMPT_PATHS = new Set([
 
 /**
  * CSRF Protection Middleware (CWE-352 Mitigation - Threat T-48).
- * Enforces custom client header and origin verification for cookie-authenticated mutating requests.
- * Pure Bearer-token API calls bypass this check as browsers never auto-attach Bearer headers.
+ * Enforces strict Origin checking on all mutating requests and custom client headers
+ * for cookie-authenticated sessions.
  */
 export function csrfProtection(req: Request, res: Response, next: NextFunction): void {
   // Safe read-only HTTP methods are not subject to CSRF
@@ -27,56 +27,49 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
     return next();
   }
 
-  // Check if session cookie is present
-  const hasCookie = req.cookies && (req.cookies['__Host-trustvault_token'] || req.cookies['trustvault_token']);
-  const hasAuthHeader = req.headers.authorization && req.headers.authorization.startsWith('Bearer ');
+  const origin = req.headers.origin;
+  const host = req.headers.host;
 
-  // If request is authenticated via Cookie (or has cookie and no Bearer token):
-  if (hasCookie && !hasAuthHeader) {
-    // 1. Check custom client header (set by frontend fetch wrapper; browser cross-origin cannot forge without CORS)
-    const clientHeader = req.headers['x-trustvault-client'] || req.headers['x-requested-with'];
-    if (clientHeader === '1' || clientHeader === 'XMLHttpRequest' || clientHeader === 'TrustVault-SPA') {
-      return next();
-    }
+  // 1. Mandatory Origin check: If Origin header is present on mutating request, it MUST match trusted origin
+  if (origin) {
+    try {
+      const originUrl = new URL(origin);
+      const isTrusted =
+        (host && originUrl.host === host) ||
+        originUrl.hostname === '127.0.0.1' ||
+        originUrl.hostname === 'localhost' ||
+        originUrl.hostname === 'trustvalt.me';
 
-    // 2. Check Origin / Referer against host
-    const origin = req.headers.origin;
-    const referer = req.headers.referer;
-    const host = req.headers.host;
-
-    if (origin) {
-      try {
-        const originUrl = new URL(origin);
-        if (originUrl.host === host || originUrl.hostname === '127.0.0.1' || originUrl.hostname === 'localhost') {
-          return next();
-        }
-      } catch {
-        // invalid URL
+      if (!isTrusted) {
+        res.status(403).json({ error: 'CSRF validation failed: Cross-origin request rejected.' });
+        return;
       }
-      res.status(403).json({ error: 'CSRF validation failed: Cross-origin request rejected.' });
+    } catch {
+      res.status(403).json({ error: 'CSRF validation failed: Invalid Origin header.' });
       return;
     }
-
-    if (referer) {
-      try {
-        const refererUrl = new URL(referer);
-        if (refererUrl.host === host || refererUrl.hostname === '127.0.0.1' || refererUrl.hostname === 'localhost') {
-          return next();
-        }
-      } catch {
-        // invalid URL
-      }
-      res.status(403).json({ error: 'CSRF validation failed: Untrusted Referer rejected.' });
-      return;
-    }
-
-    // If neither custom header nor valid Origin/Referer is provided
-    res.status(403).json({
-      error: 'CSRF validation failed: Missing X-TrustVault-Client header on cookie session.'
-    });
-    return;
   }
 
-  // Pure Bearer tokens or non-cookie requests proceed safely
+  // 2. Referer check fallback if Origin is not present
+  const referer = req.headers.referer;
+  if (!origin && referer) {
+    try {
+      const refererUrl = new URL(referer);
+      const isTrusted =
+        (host && refererUrl.host === host) ||
+        refererUrl.hostname === '127.0.0.1' ||
+        refererUrl.hostname === 'localhost' ||
+        refererUrl.hostname === 'trustvalt.me';
+
+      if (!isTrusted) {
+        res.status(403).json({ error: 'CSRF validation failed: Untrusted Referer rejected.' });
+        return;
+      }
+    } catch {
+      res.status(403).json({ error: 'CSRF validation failed: Invalid Referer header.' });
+      return;
+    }
+  }
+
   next();
 }

@@ -5,7 +5,7 @@ import { apiLogin, apiVerifyLoginMfa } from '../api';
 import type { User } from '../types';
 
 interface LoginViewProps {
-  onLoginSuccess: (token: string, user: User) => void;
+  onLoginSuccess: (user: User) => void;
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
@@ -28,8 +28,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
       const data = await apiLogin(usernameOrEmail.trim(), password, false);
       if (data.mfaRequired && data.mfaChallengeToken) {
         setMfaChallengeToken(data.mfaChallengeToken);
-      } else if (data.token && data.user) {
-        onLoginSuccess(data.token, data.user);
+      } else if (data.user) {
+        onLoginSuccess(data.user);
       }
     } catch (err: any) {
       setError(err.message || 'Authentication failed. Please verify your credentials.');
@@ -46,7 +46,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
 
     try {
       const data = await apiVerifyLoginMfa(mfaChallengeToken, totpCode);
-      onLoginSuccess(data.token, data.user);
+      onLoginSuccess(data.user);
     } catch (err: any) {
       setError(err.message || 'Invalid TOTP or recovery backup code.');
     } finally {

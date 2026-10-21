@@ -7,21 +7,23 @@ import { app } from '../src/server';
 import { ThreatScanner } from '../src/services/threatScanner';
 import { RetentionService } from '../src/services/retentionService';
 
-let adminToken: string;
-let ownerToken: string;
+import { extractAuthCookie } from './testAuth';
+
+let adminCookie: string;
+let ownerCookie: string;
 
 beforeAll(async () => {
   const adminRes = await request(app)
     .post('/api/auth/login')
     .send({ email: 'admin@trustvault.local', password: 'Admin@TrustVault2026!' });
   expect(adminRes.status).toBe(200);
-  adminToken = adminRes.body.token;
+  adminCookie = extractAuthCookie(adminRes);
 
   const ownerRes = await request(app)
     .post('/api/auth/login')
     .send({ email: 'owner@trustvault.local', password: 'Owner@TrustVault2026!' });
   expect(ownerRes.status).toBe(200);
-  ownerToken = ownerRes.body.token;
+  ownerCookie = extractAuthCookie(ownerRes);
 });
 
 describe('Heuristic Threat Scanner & NIST SP 800-88 Crypto-Shredder Suite', () => {
@@ -99,7 +101,7 @@ describe('Heuristic Threat Scanner & NIST SP 800-88 Crypto-Shredder Suite', () =
     // 1. Upload a document as owner
     const uploadRes = await request(app)
       .post('/api/documents')
-      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('Cookie', ownerCookie)
       .field('title', 'Ephemeral Audit Shred Test')
       .field('category', 'Legal')
       .attach('file', Buffer.from('%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF'), {
@@ -113,7 +115,7 @@ describe('Heuristic Threat Scanner & NIST SP 800-88 Crypto-Shredder Suite', () =
     // 2. Admin triggers immediate NIST crypto-shred on the document
     const shredRes = await request(app)
       .post('/api/admin/retention/crypto-shred')
-      .set('Authorization', `Bearer ${adminToken}`)
+      .set('Cookie', adminCookie)
       .send({ documentId: docId });
 
     expect(shredRes.status).toBe(200);
@@ -123,7 +125,7 @@ describe('Heuristic Threat Scanner & NIST SP 800-88 Crypto-Shredder Suite', () =
     // 3. Confirm document is completely purged from database
     const probeRes = await request(app)
       .get(`/api/documents/${docId}`)
-      .set('Authorization', `Bearer ${ownerToken}`);
+      .set('Cookie', ownerCookie);
     expect(probeRes.status).toBe(404);
   });
 });

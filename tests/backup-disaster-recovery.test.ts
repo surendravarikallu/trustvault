@@ -7,21 +7,23 @@ import { app } from '../src/server';
 import { BackupService } from '../src/services/backupService';
 import { StorageService } from '../src/services/storageService';
 
-let adminToken: string;
-let viewerToken: string;
+import { extractAuthCookie } from './testAuth';
+
+let adminCookie: string;
+let viewerCookie: string;
 
 beforeAll(async () => {
   const adminRes = await request(app)
     .post('/api/auth/login')
     .send({ email: 'admin@trustvault.local', password: 'Admin@TrustVault2026!' });
   expect(adminRes.status).toBe(200);
-  adminToken = adminRes.body.token;
+  adminCookie = extractAuthCookie(adminRes);
 
   const viewerRes = await request(app)
     .post('/api/auth/login')
     .send({ email: 'viewer@trustvault.local', password: 'Viewer@TrustVault2026!' });
   expect(viewerRes.status).toBe(200);
-  viewerToken = viewerRes.body.token;
+  viewerCookie = extractAuthCookie(viewerRes);
 });
 
 describe('Disaster Recovery, Cryptographic Backups & Storage Encryption Suite', () => {
@@ -138,13 +140,13 @@ describe('Disaster Recovery, Cryptographic Backups & Storage Encryption Suite', 
     // 2. Regular viewer user rejected with 403
     const viewerRes = await request(app)
       .get('/api/admin/backups')
-      .set('Authorization', `Bearer ${viewerToken}`);
+      .set('Cookie', viewerCookie);
     expect(viewerRes.status).toBe(403);
 
     // 3. Admin can list backups
     const listRes = await request(app)
       .get('/api/admin/backups')
-      .set('Authorization', `Bearer ${adminToken}`);
+      .set('Cookie', adminCookie);
     expect(listRes.status).toBe(200);
     expect(Array.isArray(listRes.body.backups)).toBe(true);
     expect(listRes.body.backups.length).toBeGreaterThan(0);
@@ -152,7 +154,7 @@ describe('Disaster Recovery, Cryptographic Backups & Storage Encryption Suite', 
     // 4. Admin can trigger fresh verified snapshot
     const createRes = await request(app)
       .post('/api/admin/backups')
-      .set('Authorization', `Bearer ${adminToken}`);
+      .set('Cookie', adminCookie);
     expect(createRes.status).toBe(201);
     expect(createRes.body.backupId).toBeDefined();
     const newBackupId = createRes.body.backupId;
@@ -160,7 +162,7 @@ describe('Disaster Recovery, Cryptographic Backups & Storage Encryption Suite', 
     // 5. Admin can verify integrity of snapshot
     const verifyRes = await request(app)
       .post('/api/admin/backups/verify')
-      .set('Authorization', `Bearer ${adminToken}`)
+      .set('Cookie', adminCookie)
       .send({ backupId: newBackupId });
     expect(verifyRes.status).toBe(200);
     expect(verifyRes.body.isValid).toBe(true);

@@ -22,11 +22,10 @@ import {
 } from '../api';
 
 interface UserDirectoryViewProps {
-  token: string;
   currentUser: User;
 }
 
-export const UserDirectoryView: React.FC<UserDirectoryViewProps> = ({ token, currentUser }) => {
+export const UserDirectoryView: React.FC<UserDirectoryViewProps> = ({ currentUser }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -55,7 +54,7 @@ export const UserDirectoryView: React.FC<UserDirectoryViewProps> = ({ token, cur
   const loadUsers = async () => {
     setIsLoading(true);
     try {
-      const data = await fetchAllUsers(token);
+      const data = await fetchAllUsers();
       setUsers(data.users || []);
     } catch (err: any) {
       setError(err.message);
@@ -68,7 +67,7 @@ export const UserDirectoryView: React.FC<UserDirectoryViewProps> = ({ token, cur
     setError(null);
     setMsg(null);
     try {
-      await changeUserRole(userId, newRole, token);
+      await changeUserRole(userId, newRole);
       setMsg(`Updated role to ${newRole}. Token version incremented in PostgreSQL; active sessions invalidated instantly.`);
       await loadUsers();
     } catch (err: any) {
@@ -83,7 +82,7 @@ export const UserDirectoryView: React.FC<UserDirectoryViewProps> = ({ token, cur
     setError(null);
     setMsg(null);
     try {
-      await deactivateUser(userId, token);
+      await deactivateUser(userId);
       setMsg(`Deactivated user ${name}. All active JWTs blocked.`);
       await loadUsers();
     } catch (err: any) {
@@ -107,7 +106,7 @@ export const UserDirectoryView: React.FC<UserDirectoryViewProps> = ({ token, cur
     setIsCreating(true);
 
     try {
-      await apiAdminCreateUser(token, {
+      await apiAdminCreateUser({
         name: createName.trim(),
         email: createEmail.trim(),
         password: createPassword,
@@ -142,7 +141,7 @@ export const UserDirectoryView: React.FC<UserDirectoryViewProps> = ({ token, cur
     setIsResetting(true);
 
     try {
-      await apiAdminResetPassword(token, resetTargetUser.id, newPassword);
+      await apiAdminResetPassword(resetTargetUser.id, newPassword);
       setMsg(`Password reset for ${resetTargetUser.email}. Token version incremented and all active sessions revoked.`);
       setIsResetOpen(false);
       setResetTargetUser(null);
@@ -163,7 +162,7 @@ export const UserDirectoryView: React.FC<UserDirectoryViewProps> = ({ token, cur
     setError(null);
     setMsg(null);
     try {
-      await apiAdminResetMfa(token, user.id);
+      await apiAdminResetMfa(user.id);
       setMsg(`Emergency 2FA reset completed for ${user.email}. Active sessions revoked.`);
       await loadUsers();
     } catch (err: any) {

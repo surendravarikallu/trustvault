@@ -9,18 +9,11 @@ import type {
   PermissionLevel
 } from './types';
 
-function getAuthHeader(token: string | null): Record<string, string> {
-  const headers: Record<string, string> = {
-    'X-TrustVault-Client': '1'
-  };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-  return headers;
-}
+const CLIENT_HEADERS: Record<string, string> = {
+  'X-TrustVault-Client': '1'
+};
 
 export interface LoginResponse {
-  token?: string;
   user?: User;
   mfaRequired?: boolean;
   mfaChallengeToken?: string;
@@ -32,11 +25,28 @@ export interface LoginResponse {
   message?: string;
 }
 
+export async function apiMe(): Promise<{ user: User }> {
+  const res = await fetch('/api/auth/me', {
+    credentials: 'same-origin',
+    headers: CLIENT_HEADERS
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || 'Session inactive.');
+  }
+  return data;
+}
+
 export async function apiLogin(usernameOrEmail: string, password: string, enrollMfa?: boolean): Promise<LoginResponse> {
   const cleanId = usernameOrEmail.trim();
   const res = await fetch('/api/auth/login', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    headers: {
+      ...CLIENT_HEADERS,
+      'Content-Type': 'application/json'
+    },
     body: JSON.stringify({
       email: cleanId,
       username: cleanId,
@@ -52,10 +62,22 @@ export async function apiLogin(usernameOrEmail: string, password: string, enroll
   return data;
 }
 
-export async function apiConfirmEnrollMfa(mfaEnrollToken: string, code: string): Promise<{ token: string; user: User; backupCodes: string[] }> {
+export async function apiLogout(): Promise<void> {
+  await fetch('/api/auth/logout', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: CLIENT_HEADERS
+  });
+}
+
+export async function apiConfirmEnrollMfa(mfaEnrollToken: string, code: string): Promise<{ user: User; backupCodes: string[] }> {
   const res = await fetch('/api/auth/mfa/confirm-enroll', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    headers: {
+      ...CLIENT_HEADERS,
+      'Content-Type': 'application/json'
+    },
     body: JSON.stringify({ mfaEnrollToken, code })
   });
 
@@ -66,10 +88,14 @@ export async function apiConfirmEnrollMfa(mfaEnrollToken: string, code: string):
   return data;
 }
 
-export async function apiVerifyLoginMfa(mfaChallengeToken: string, code: string): Promise<{ token: string; user: User }> {
+export async function apiVerifyLoginMfa(mfaChallengeToken: string, code: string): Promise<{ user: User }> {
   const res = await fetch('/api/auth/mfa/verify-login', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    headers: {
+      ...CLIENT_HEADERS,
+      'Content-Type': 'application/json'
+    },
     body: JSON.stringify({ mfaChallengeToken, code })
   });
 
@@ -80,10 +106,11 @@ export async function apiVerifyLoginMfa(mfaChallengeToken: string, code: string)
   return data;
 }
 
-export async function apiSetupMfa(token: string): Promise<{ secret: string; qrCode: string; otpauthUrl: string }> {
+export async function apiSetupMfa(): Promise<{ secret: string; qrCode: string; otpauthUrl: string }> {
   const res = await fetch('/api/auth/mfa/setup', {
     method: 'POST',
-    headers: getAuthHeader(token)
+    credentials: 'same-origin',
+    headers: CLIENT_HEADERS
   });
 
   const data = await res.json();
@@ -93,11 +120,12 @@ export async function apiSetupMfa(token: string): Promise<{ secret: string; qrCo
   return data;
 }
 
-export async function apiVerifyMfaSetup(token: string, code: string): Promise<{ message: string; backupCodes: string[] }> {
+export async function apiVerifyMfaSetup(code: string): Promise<{ message: string; backupCodes: string[] }> {
   const res = await fetch('/api/auth/mfa/verify-setup', {
     method: 'POST',
+    credentials: 'same-origin',
     headers: {
-      ...getAuthHeader(token),
+      ...CLIENT_HEADERS,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({ code })
@@ -110,11 +138,12 @@ export async function apiVerifyMfaSetup(token: string, code: string): Promise<{ 
   return data;
 }
 
-export async function apiDisableMfa(token: string, password: string, code: string): Promise<void> {
+export async function apiDisableMfa(password: string, code: string): Promise<void> {
   const res = await fetch('/api/auth/mfa/disable', {
     method: 'POST',
+    credentials: 'same-origin',
     headers: {
-      ...getAuthHeader(token),
+      ...CLIENT_HEADERS,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({ password, code })
@@ -126,10 +155,14 @@ export async function apiDisableMfa(token: string, password: string, code: strin
   }
 }
 
-export async function apiRegister(email: string, password: string, name: string): Promise<{ token: string; user: User }> {
+export async function apiRegister(email: string, password: string, name: string): Promise<{ user: User }> {
   const res = await fetch('/api/auth/register', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    headers: {
+      ...CLIENT_HEADERS,
+      'Content-Type': 'application/json'
+    },
     body: JSON.stringify({ email, password, name })
   });
 
@@ -141,7 +174,6 @@ export async function apiRegister(email: string, password: string, name: string)
 }
 
 export async function fetchDocuments(
-  token: string,
   search?: { q?: string; owner?: string; category?: string; fromDate?: string; toDate?: string }
 ): Promise<VaultDocument[]> {
   let url = '/api/documents';
@@ -156,7 +188,8 @@ export async function fetchDocuments(
   }
 
   const res = await fetch(url, {
-    headers: getAuthHeader(token)
+    credentials: 'same-origin',
+    headers: CLIENT_HEADERS
   });
 
   const data = await res.json();
@@ -166,10 +199,11 @@ export async function fetchDocuments(
   return data.documents || [];
 }
 
-export async function uploadDocument(formData: FormData, token: string): Promise<VaultDocument> {
+export async function uploadDocument(formData: FormData): Promise<VaultDocument> {
   const res = await fetch('/api/documents', {
     method: 'POST',
-    headers: getAuthHeader(token),
+    credentials: 'same-origin',
+    headers: CLIENT_HEADERS,
     body: formData
   });
 
@@ -181,23 +215,26 @@ export async function uploadDocument(formData: FormData, token: string): Promise
 }
 
 /**
- * In-Memory Blob Downloader.
- * Defense against Loophole L-02: Zero token exposure in query strings.
+ * In-Memory Safe Blob Downloader.
+ * Authenticated strictly via __Host- HttpOnly cookie.
  */
-export async function downloadDocument(id: string, originalFilename: string, token: string, otp?: string): Promise<void> {
-  const headers: Record<string, string> = { ...getAuthHeader(token) };
+export async function downloadDocument(id: string, originalFilename: string, otp?: string): Promise<void> {
+  const headers: Record<string, string> = { ...CLIENT_HEADERS };
   if (otp) {
     headers['x-pdf-otp'] = otp;
   }
 
-  const res = await fetch(`/api/documents/${id}/download`, { headers });
+  const res = await fetch(`/api/documents/${id}/download`, {
+    credentials: 'same-origin',
+    headers
+  });
 
   if (res.status === 401) {
     const err = await res.json().catch(() => ({}));
     if (err.pdfProtected && !otp) {
       const userOtp = window.prompt('🔒 This PDF is protected by an access policy.\nPlease enter the One-Time Password (OTP) to download and decrypt:');
       if (userOtp && userOtp.trim()) {
-        return downloadDocument(id, originalFilename, token, userOtp.trim());
+        return downloadDocument(id, originalFilename, userOtp.trim());
       }
       return;
     }
@@ -220,36 +257,11 @@ export async function downloadDocument(id: string, originalFilename: string, tok
   window.URL.revokeObjectURL(blobUrl);
 }
 
-export async function fetchDocumentBlobUrl(
-  id: string,
-  token: string,
-  preview = false
-): Promise<{ blobUrl: string; mimeType: string; arrayBuffer: ArrayBuffer }> {
-  const url = preview ? `/api/documents/${id}/download?preview=true` : `/api/documents/${id}/download`;
-  const res = await fetch(url, {
-    headers: getAuthHeader(token)
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: 'Fetch failed' }));
-    throw new Error(err.error || `Request failed with HTTP ${res.status}`);
-  }
-
-  const rawContentType = res.headers.get('content-type') || 'application/pdf';
-  // Strip any charset or directives from content-type header
-  const mimeType = rawContentType.split(';')[0].trim();
-  const rawBlob = await res.blob();
-  const arrayBuffer = await rawBlob.arrayBuffer();
-  const typedBlob = new Blob([rawBlob], { type: mimeType });
-  const blobUrl = window.URL.createObjectURL(typedBlob);
-
-  return { blobUrl, mimeType, arrayBuffer };
-}
-
-export async function deleteDocument(id: string, token: string): Promise<void> {
+export async function deleteDocument(id: string): Promise<void> {
   const res = await fetch(`/api/documents/${id}`, {
     method: 'DELETE',
-    headers: getAuthHeader(token)
+    credentials: 'same-origin',
+    headers: CLIENT_HEADERS
   });
 
   const data = await res.json();
@@ -258,12 +270,13 @@ export async function deleteDocument(id: string, token: string): Promise<void> {
   }
 }
 
-export async function replaceDocument(id: string, file: File, token: string): Promise<VaultDocument> {
+export async function replaceDocument(id: string, file: File): Promise<VaultDocument> {
   const formData = new FormData();
   formData.append('file', file);
   const res = await fetch(`/api/documents/${id}`, {
     method: 'PUT',
-    headers: getAuthHeader(token),
+    credentials: 'same-origin',
+    headers: CLIENT_HEADERS,
     body: formData
   });
 
@@ -289,9 +302,10 @@ export interface DocumentVersionInfo {
   };
 }
 
-export async function fetchDocumentVersions(id: string, token: string): Promise<DocumentVersionInfo[]> {
+export async function fetchDocumentVersions(id: string): Promise<DocumentVersionInfo[]> {
   const res = await fetch(`/api/documents/${id}/versions`, {
-    headers: getAuthHeader(token)
+    credentials: 'same-origin',
+    headers: CLIENT_HEADERS
   });
 
   const data = await res.json();
@@ -301,9 +315,10 @@ export async function fetchDocumentVersions(id: string, token: string): Promise<
   return data.versions || [];
 }
 
-export async function fetchDocumentPermissions(docId: string, token: string): Promise<DocumentPermission[]> {
+export async function fetchDocumentPermissions(docId: string): Promise<DocumentPermission[]> {
   const res = await fetch(`/api/documents/${docId}/permissions`, {
-    headers: getAuthHeader(token)
+    credentials: 'same-origin',
+    headers: CLIENT_HEADERS
   });
 
   const data = await res.json();
@@ -318,10 +333,8 @@ export async function grantPermission(
   targetEmail: string,
   permissionLevel: PermissionLevel,
   expiresAt: string | null,
-  token: string,
   options?: {
     burnOnDownload?: boolean;
-    previewOnly?: boolean;
     maxDownloads?: number;
     pdfProtected?: boolean;
     otp?: string;
@@ -330,8 +343,9 @@ export async function grantPermission(
 ): Promise<{ otp?: string }> {
   const res = await fetch(`/api/documents/${docId}/permissions`, {
     method: 'POST',
+    credentials: 'same-origin',
     headers: {
-      ...getAuthHeader(token),
+      ...CLIENT_HEADERS,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
@@ -339,7 +353,6 @@ export async function grantPermission(
       permissionLevel,
       expiresAt,
       burnOnDownload: options?.burnOnDownload ?? false,
-      previewOnly: options?.previewOnly ?? false,
       maxDownloads: options?.maxDownloads ?? (options?.burnOnDownload ? 1 : 0),
       pdfProtected: options?.pdfProtected ?? false,
       otp: options?.otp,
@@ -354,10 +367,11 @@ export async function grantPermission(
   return { otp: data.otp };
 }
 
-export async function revokePermission(docId: string, targetUserId: string, token: string): Promise<void> {
+export async function revokePermission(docId: string, targetUserId: string): Promise<void> {
   const res = await fetch(`/api/documents/${docId}/permissions/${targetUserId}`, {
     method: 'DELETE',
-    headers: getAuthHeader(token)
+    credentials: 'same-origin',
+    headers: CLIENT_HEADERS
   });
 
   const data = await res.json();
@@ -366,10 +380,11 @@ export async function revokePermission(docId: string, targetUserId: string, toke
   }
 }
 
-export async function suggestReviewersWithAI(docId: string, token: string): Promise<ReviewerSuggestion[]> {
+export async function suggestReviewersWithAI(docId: string): Promise<ReviewerSuggestion[]> {
   const res = await fetch(`/api/documents/${docId}/ai-share-suggest`, {
     method: 'POST',
-    headers: getAuthHeader(token)
+    credentials: 'same-origin',
+    headers: CLIENT_HEADERS
   });
 
   const data = await res.json();
@@ -380,7 +395,6 @@ export async function suggestReviewersWithAI(docId: string, token: string): Prom
 }
 
 export async function fetchAuditLogs(
-  token: string,
   filter?: { action?: string; documentId?: string }
 ): Promise<{ total: number; logs: AuditRecord[] }> {
   let url = '/api/admin/audit-logs';
@@ -392,19 +406,21 @@ export async function fetchAuditLogs(
   }
 
   const res = await fetch(url, {
-    headers: getAuthHeader(token)
+    credentials: 'same-origin',
+    headers: CLIENT_HEADERS
   });
 
   const data = await res.json();
   if (!res.ok) {
     throw new Error(data.error || 'Failed to fetch audit logs.');
   }
-  return data;
+  return data.logs ? { total: data.total, logs: data.logs } : { total: 0, logs: [] };
 }
 
-export async function verifyAuditLedger(token: string): Promise<AuditVerification> {
+export async function verifyAuditLedger(): Promise<AuditVerification> {
   const res = await fetch('/api/admin/audit-verify', {
-    headers: getAuthHeader(token)
+    credentials: 'same-origin',
+    headers: CLIENT_HEADERS
   });
 
   const data = await res.json();
@@ -414,9 +430,10 @@ export async function verifyAuditLedger(token: string): Promise<AuditVerificatio
   return data;
 }
 
-export async function fetchAllUsers(token: string): Promise<{ total: number; users: User[] }> {
+export async function fetchAllUsers(): Promise<{ total: number; users: User[] }> {
   const res = await fetch('/api/admin/users', {
-    headers: getAuthHeader(token)
+    credentials: 'same-origin',
+    headers: CLIENT_HEADERS
   });
 
   const data = await res.json();
@@ -426,11 +443,12 @@ export async function fetchAllUsers(token: string): Promise<{ total: number; use
   return data;
 }
 
-export async function changeUserRole(userId: string, role: Role, token: string): Promise<void> {
+export async function changeUserRole(userId: string, role: Role): Promise<void> {
   const res = await fetch(`/api/admin/users/${userId}/role`, {
     method: 'PATCH',
+    credentials: 'same-origin',
     headers: {
-      ...getAuthHeader(token),
+      ...CLIENT_HEADERS,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({ role })
@@ -442,10 +460,11 @@ export async function changeUserRole(userId: string, role: Role, token: string):
   }
 }
 
-export async function deactivateUser(userId: string, token: string): Promise<void> {
+export async function deactivateUser(userId: string): Promise<void> {
   const res = await fetch(`/api/admin/users/${userId}/deactivate`, {
     method: 'POST',
-    headers: getAuthHeader(token)
+    credentials: 'same-origin',
+    headers: CLIENT_HEADERS
   });
 
   const data = await res.json();
@@ -455,13 +474,13 @@ export async function deactivateUser(userId: string, token: string): Promise<voi
 }
 
 export async function apiAdminCreateUser(
-  token: string,
   payload: { name: string; email: string; password: string; role: Role }
 ): Promise<{ message: string; user: User }> {
   const res = await fetch('/api/admin/users', {
     method: 'POST',
+    credentials: 'same-origin',
     headers: {
-      ...getAuthHeader(token),
+      ...CLIENT_HEADERS,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify(payload)
@@ -475,14 +494,14 @@ export async function apiAdminCreateUser(
 }
 
 export async function apiAdminResetPassword(
-  token: string,
   userId: string,
   newPassword: string
 ): Promise<{ message: string }> {
   const res = await fetch(`/api/admin/users/${userId}/reset-password`, {
     method: 'POST',
+    credentials: 'same-origin',
     headers: {
-      ...getAuthHeader(token),
+      ...CLIENT_HEADERS,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({ newPassword })
@@ -496,12 +515,12 @@ export async function apiAdminResetPassword(
 }
 
 export async function apiAdminResetMfa(
-  token: string,
   userId: string
 ): Promise<{ message: string }> {
   const res = await fetch(`/api/admin/users/${userId}/reset-2fa`, {
     method: 'POST',
-    headers: getAuthHeader(token)
+    credentials: 'same-origin',
+    headers: CLIENT_HEADERS
   });
 
   const data = await res.json();

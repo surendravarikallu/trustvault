@@ -483,6 +483,44 @@
     - Added `History` modal for document owners to inspect historical version chains and copy SHA-256 digests.
 * **Commit:** [`2812a4e` - Role-Tailored Dashboard KPI Metrics, Sub-Filters, Revision Modal & History Tracking](https://github.com/surendravarikallu/trustvault/commit/2812a4e)
 
+---
+
+### Entry 22: Dual-Channel Credential Leakage, Preview Surface Elimination & Pure `__Host-` Cookie Isolation
+* **Date:** 2026-10-21
+* **Topic:** Authentication Architecture, Credential Channel Unification, Client Parser Surface Elimination & Same-Origin Hardening
+* **What I Asked:**  
+  "Review the claim that 'HttpOnly isolation defeats XSS token theft' against the actual application runtime behavior and verify whether any tokens or fallbacks expose our authentication channel."
+* **What the AI Proposed:**  
+  The AI claimed that the application was immune to XSS token theft because it issued an `HttpOnly` cookie. However, its actual implementation maintained a compromised, dual-channel architecture:
+  1. Login and registration JSON response bodies returned the raw JWT token (`res.json({ token, user })`).
+  2. The React frontend stored this token in memory / React state, passed it into every API call via `Authorization: Bearer ${token}`, and exposed helper functions like `getAuthHeader()`.
+  3. The server set *two* cookies on login: a prefixed `__Host-trustvault_token` and an unprefixed `trustvault_token`.
+  4. The auth middleware accepted either the `__Host-` cookie, the legacy plain cookie, or the `Authorization: Bearer` header.
+  5. The AI also retained an in-browser PDF preview surface (`?preview=true` backed by `pdfjs-dist`), arguing that canvas rendering prevented JavaScript execution.
+* **What Was Wrong (Developer Intervention):**  
+  1. **Hollow Security Story:** During my review pass, I executed `curl -i -X POST .../api/auth/login` myself and immediately saw the JWT printed in the plaintext JSON response body. Because the client JavaScript held this token and sent Bearer headers, any XSS execution could trivially exfiltrate the token from memory, defeating the entire rationale for HttpOnly cookies.
+  2. **Subdomain Hijacking Risk:** Emitting the plain `trustvault_token` cookie defeated the `__Host-` security property, as sibling subdomains on a shared parent domain can forge or overwrite unprefixed cookies.
+  3. **Dual Credential Paths:** Maintaining a Bearer fallback "for tests and curl" meant that every authorization check, rate limit, and threat vector had to cover two disparate authentication channels.
+  4. **Client Parser Surface:** Client-side PDF parsing via `pdfjs-dist` executes in the page origin, introducing parser vulnerabilities (e.g. CVE-2024-4367 font script execution) and breaking the strictly audited download model.
+  5. **CORS on Same-Origin App:** The server mounted `cors({ credentials: true })`, reflecting `Access-Control-Allow-Credentials: true` on plain page loads.
+* **What I Did Instead:**  
+  1. **Strictly Single Credential Path (`__Host-trustvault_token`)**:
+     - Deleted `token` from all JSON response bodies (`login`, `register`, `verifyLoginMFA`, `confirmEnrollMFA`).
+     - Deleted the legacy `trustvault_token` cookie and removed the `Authorization: Bearer` fallback in `src/middleware/auth.ts`.
+     - Completely overhauled the frontend (`frontend/src/api.ts`, `App.tsx`, and all modal components) to hold ZERO token state, drop `getAuthHeader()`, and use `credentials: 'same-origin'` on all fetches.
+     - Preserved concurrent judge sessions: updated `logout` to clear client cookies without bumping `tokenVersion`, preventing one evaluator's logout from kicking out other evaluators on shared seeded accounts.
+  2. **Complete Elimination of Preview Surface**:
+     - Uninstalled `pdfjs-dist`, deleted `DocumentPreviewModal.tsx`, removed `?preview` parameter handling, and removed `.docx` and `.xlsx` from the upload whitelist. Enforced strictly download-only delivery (`Content-Disposition: attachment`, `Content-Type: application/octet-stream`).
+  3. **CORS Removal & Origin Validation**:
+     - Removed CORS middleware entirely (app is strictly same-origin).
+     - Added strict `Origin` and `Referer` validation in CSRF middleware on all mutating requests (`POST`, `PUT`, `DELETE`, `PATCH`), rejecting cross-origin requests (`Origin: https://evil.example`) with `HTTP 403 Forbidden` and zero state change.
+     - Pinned CSP: `style-src ["'self'", "'unsafe-inline']`, `font-src ["'self'", 'data:']` (no generic `https:` wildcards).
+  4. **Isolated Test Database & Automated Verification**:
+     - Configured Prisma and audit anchors to use a dedicated test database (`trustvault_test`) and `storage/audit_anchor_test.json`, ensuring automated tests never pollute the production audit ledger.
+     - Added comprehensive tests in `tests/hardened-attacks.test.ts`: `AUTH-CK-01` (zero body token), `AUTH-CK-02` (single `__Host-` cookie with HttpOnly, Secure, Path=/, no Domain), `AUTH-CK-03` (Bearer fallback rejected), `AUTH-CK-04` (legacy cookie rejected), `CSRF-01` (cross-origin POST rejected with 403), `CORS-01` (ACAO absent), `CSP-01` (pinned CSP), and `PRV-01` (`?preview=true` behaves like plain download).
+* **Commit:** [`83a1f9e` - Single-Channel `__Host-` Cookie Auth, Preview Surface Removal & Origin Hardening](https://github.com/surendravarikallu/trustvault/commit/83a1f9e)
+
+
 
 
 

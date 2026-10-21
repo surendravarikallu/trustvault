@@ -52,22 +52,15 @@ export function validateFileBuffer(buffer: Buffer, originalFilename: string): Fi
       return { valid: false, detectedMime: 'unknown', error: 'File extension is .jpg but buffer lacks valid JPEG header.' };
     }
 
-    case 'docx':
-    case 'xlsx': {
-      // Modern Office files are ZIP archives starting with PK\x03\x04 (0x50, 0x4B, 0x03, 0x04)
-      if (buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4B && buffer[2] === 0x03 && buffer[3] === 0x04) {
-        const mime = ext === 'docx'
-          ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-        return { valid: true, detectedMime: mime };
-      }
-      return { valid: false, detectedMime: 'unknown', error: `File extension is .${ext} but buffer lacks valid ZIP/OOXML header.` };
-    }
-
     case 'txt': {
-      // Text files must not contain null bytes (\0)
-      const sampleLength = Math.min(buffer.length, 4096);
-      for (let i = 0; i < sampleLength; i++) {
+      // Full buffer validation: strictly valid UTF-8 and zero NUL bytes across all bytes
+      try {
+        const decoder = new TextDecoder('utf-8', { fatal: true });
+        decoder.decode(buffer);
+      } catch {
+        return { valid: false, detectedMime: 'application/octet-stream', error: 'Plain text file contains invalid UTF-8 byte sequences.' };
+      }
+      for (let i = 0; i < buffer.length; i++) {
         if (buffer[i] === 0x00) {
           return { valid: false, detectedMime: 'application/octet-stream', error: 'Plain text file contains illegal null bytes.' };
         }
@@ -79,7 +72,7 @@ export function validateFileBuffer(buffer: Buffer, originalFilename: string): Fi
       return {
         valid: false,
         detectedMime: 'unknown',
-        error: `File extension .${ext} is not in the permitted whitelist (.pdf, .docx, .xlsx, .txt, .png, .jpg).`
+        error: `File extension .${ext} is not in the permitted whitelist (.pdf, .png, .jpg, .txt).`
       };
   }
 }

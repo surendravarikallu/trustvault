@@ -30,18 +30,13 @@ interface JwtPayload {
 export async function authenticate(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   let token: string | undefined;
 
-  // 1. Check secure HttpOnly cookie first
+  // Single credential path: Strictly __Host-trustvault_token cookie
   if (req.cookies) {
-    token = req.cookies['__Host-trustvault_token'] || req.cookies['trustvault_token'];
-  }
-
-  // 2. Fall back to Authorization: Bearer header for API scripts & testing
-  if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
-    token = req.headers.authorization.split(' ')[1];
+    token = req.cookies['__Host-trustvault_token'];
   }
 
   if (!token) {
-    res.status(401).json({ error: 'Authentication required. Missing Bearer token or session cookie.' });
+    res.status(401).json({ error: 'Authentication required. Missing secure __Host- session cookie.' });
     return;
   }
 
