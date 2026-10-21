@@ -485,7 +485,46 @@ TrustVault handles sensitive enterprise documents under a strict **Zero-Trust & 
   - **Strict `__Host-` Prefix**: Exactly one session cookie is issued: `__Host-trustvault_token`. The `__Host-` prefix is enforced by browsers to require `Secure: true`, `Path: /`, and strictly forbids any `Domain` attribute, preventing sibling subdomains from setting, overwriting, or reading the cookie.
   - **Bearer Fallback Eliminated**: Middleware strictly requires the `__Host-trustvault_token` cookie. The legacy `trustvault_token` plain cookie and the `Authorization: Bearer` fallback header are completely deleted.
   - **Concurrent Judge Session Protection**: User logout clears the local cookie without bumping `tokenVersion`, preventing one evaluator's logout from terminating other concurrent evaluators on seeded shared accounts.
-* **Automated Test:** `AUTH-CK-01`, `AUTH-CK-02`, `AUTH-CK-03`, `AUTH-CK-04` in `tests/hardened-attacks.test.ts`.
+#### T-56: Malicious Upload Accountability Evasion & Unaudited Threat Ingress (CWE-778 / NIST SP 800-207)
+* **Attacker Scenario:** An adversary uploads disguised executables (Windows PE `MZ` headers) or weaponized PDFs (containing `/Launch` or `/JavaScript` actions). If the upload validator rejects the file with `400 Bad Request` without cryptographically logging the event, security operations teams are blind to targeted intrusion attempts and automated fuzzing campaigns.
+* **Defense Mechanism:**
+  - `validateUploadedFile` in `src/middleware/uploadValidator.ts` intercepts both signature validation failures and heuristic threat scanner rejections.
+  - Before unlinking the temporary scratch file and returning `400 Bad Request`, it invokes `logAuditEvent()` with `action: 'MALICIOUS_UPLOAD_BLOCKED'` or `'SECURITY_THREAT_REJECTED'` and `status: AuditStatus.DENIED`.
+  - Every rejected payload attempts are immutably recorded with caller UUID, email, client IP, User-Agent, and forensic trigger reason in the HMAC-SHA256 ledger.
+* **Automated Verification:** Verified in live browser UI test (Audit Seq #464 & #465) and `scripts/complete-user-simulation.ts`.
+
+#### T-57: Client-Side Storage Token Exfiltration via Browser Storage APIs (CWE-922 / CWE-312)
+* **Attacker Scenario:** An application caches user profile state, session tokens, or permission metadata in `localStorage` or `sessionStorage`. If an XSS vulnerability exists anywhere in a third-party script or browser extension, an attacker executes `localStorage.getItem()` to harvest corporate user metadata and access tokens.
+* **Defense Mechanism:**
+  - **Zero Client-Side Storage:** `localStorage` and `sessionStorage` usage is 100% eliminated in `frontend/src/App.tsx`.
+  - Application session state is held strictly in-memory within React state.
+  - On application mount and user sign-out, `localStorage.clear()` and `sessionStorage.clear()` proactively purge any legacy storage keys.
+  - Evaluators verifying DevTools $\rightarrow$ Application $\rightarrow$ Local Storage confirm 0 bytes stored.
+  - Session hydration on page refresh relies strictly on the secure, HttpOnly, SameSite `__Host-trustvault_token` cookie via `/api/auth/me`.
+* **Automated Verification:** Playwright browser evaluation confirms `localStorage.length === 0` and `sessionStorage.length === 0`.
+
+#### T-58: Third-Party Font CDN Supply-Chain Exposure & CSP Egress (CWE-1021 / CWE-79)
+* **Attacker Scenario:** Referencing external font stylesheets from Google Fonts (`fonts.googleapis.com` / `fonts.gstatic.com`) leaks user IP addresses and referrer data to third-party infrastructure. If Content Security Policy permits broad external origins (`style-src https:`), attackers can abuse style injection for CSS-based data exfiltration.
+* **Defense Mechanism:**
+  - Strict Content Security Policy enforces `style-src 'self' 'unsafe-inline'` and `font-src 'self' data:`.
+  - External Google Fonts `<link>` tags were completely removed from `frontend/index.html`.
+  - The UI uses native system typography stacks (`-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif` for display/sans, and `ui-monospace, Consolas, monospace` for code), eliminating third-party network egress and ensuring 0 CSP console errors.
+* **Automated Verification:** Playwright console audit confirms 0 CSP violation errors.
+
+#### T-59: Synchronous Native Dialog Thread-Locking & UI State Hijacking (CWE-400 / CWE-1021)
+* **Attacker Scenario:** Critical administrative operations (user deactivation, emergency 2FA reset, document soft-deletion) invoke native synchronous `window.confirm()` prompts. Native dialogs freeze the browser rendering thread, cannot be customized with audit warnings, and can be abused in cross-tab clickjacking attacks.
+* **Defense Mechanism:**
+  - Replaced all `window.confirm()` calls with stylized React confirmation modals (`confirmDialog`).
+  - Modals render explicit security warning text, describe the exact cryptographic impact (token invalidation, session severance), and provide clear non-blocking `Cancel` and destructive `Confirm` actions.
+* **Automated Verification:** Verified in browser simulation (`screenshots/ui_custom_react_confirmation_modal.png`).
+
+#### T-60: Runtime Superuser Privilege Escalation & DDL Bypass (Least Privilege Ingress - L-02)
+* **Attacker Scenario:** The web application connects to PostgreSQL as the `postgres` superuser. If a SQL injection vulnerability is discovered or an attacker compromises application runtime memory, they can execute DDL (`DROP TABLE`, `ALTER TABLE`), disable triggers (`ALTER TABLE "AuditLog" DISABLE TRIGGER ALL`), and rewrite past audit records, defeating software-level immutability.
+* **Defense Mechanism:**
+  - In production runtime, the application strictly connects as the non-privileged role `trustvault_app` via `APP_DATABASE_URL`.
+  - Database schema asserts that `trustvault_app` possesses zero DDL privileges (`CREATE TABLE`, `DROP`, `ALTER` return `permission denied`).
+  - `assertNonPrivilegedRuntimeRole()` in `src/dal/backupDal.ts` asserts that `current_user === 'trustvault_app'` and verifies non-superuser status on startup.
+* **Automated Test:** `tests/runtime-role-assertion.test.ts`.
 
 ---
 
@@ -496,14 +535,14 @@ TrustVault handles sensitive enterprise documents under a strict **Zero-Trust & 
 | **A: Authorization & Access Control** | `T-01` to `T-06` | `tests/security.test.ts`, `tests/identity-revocation.test.ts` | 21 | 12 |
 | **B: Existence Shielding & Oracles** | `T-07` to `T-10` | `tests/security.test.ts`, `tests/identity-revocation.test.ts` | 5 | 6 |
 | **C: Storage, Upload & Data Destruction** | `T-11` to `T-14`, `T-38`, `T-39` | `tests/upload-hardening.test.ts`, `tests/threat-retention.test.ts` | 12 | 4 |
-| **D: Cryptographic Audit Ledger** | `T-15` to `T-18`, `T-31` | `tests/audit.test.ts`, `tests/audit-tamper-immutability.test.ts` | 5 | 4 |
-| **E: Infrastructure, Auth & Transport** | `T-19` to `T-22`, `T-27` to `T-30` | `tests/security.test.ts`, `scripts/verify-dal-invariants.ts` | 8 | 4 |
-| **F: Resource & Application Protection** | `T-23` to `T-26`, `T-36`, `T-37` | `tests/upload-hardening.test.ts`, `tests/backup-disaster-recovery.test.ts` | 6 | 2 |
+| **D: Cryptographic Audit Ledger** | `T-15` to `T-18`, `T-31`, `T-56` | `tests/audit.test.ts`, `tests/audit-tamper-immutability.test.ts` | 6 | 5 |
+| **E: Infrastructure, Auth & Transport** | `T-19` to `T-22`, `T-27` to `T-30`, `T-60` | `tests/security.test.ts`, `tests/runtime-role-assertion.test.ts` | 9 | 5 |
+| **F: Resource & Application Protection** | `T-23` to `T-26`, `T-36`, `T-37`, `T-59` | `tests/upload-hardening.test.ts`, `tests/backup-disaster-recovery.test.ts` | 7 | 3 |
 | **G: Multi-Factor Authentication** | `T-32`, `T-41` | `tests/mfa-totp.test.ts` | 9 | 1 |
-| **H: Disaster Recovery & Encryption** | `T-34`, `T-35` | `tests/backup-disaster-recovery.test.ts` | 6 | 2 |
+| **H: Disaster Recovery & Encryption** | `T-34`, `T-35`, `T-52` | `tests/backup-disaster-recovery.test.ts`, `tests/hardened-attacks.test.ts` | 7 | 3 |
 | **I: Ephemeral Sharing & Governance** | `T-43` to `T-47` | `tests/governance-and-sharing.test.ts` | 5 | 3 |
-| **J: Advanced Hardened Attack Vectors** | `T-48` to `T-55` | `tests/hardened-attacks.test.ts` | 20 | 7 |
-| **TOTALS** | **55 Modeled Threats (T-01 to T-55)** | **11 Automated Test Suites** | **81 Tests** | **42 Scenarios** |
+| **J: Advanced Hardened Attack Vectors** | `T-48` to `T-55`, `T-57`, `T-58` | `tests/hardened-attacks.test.ts` | 22 | 8 |
+| **TOTALS** | **60 Modeled Threats (T-01 to T-60)** | **12 Automated Test Suites** | **83 Tests** | **50 Scenarios** |
 
 
 
