@@ -32,6 +32,10 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
 
   // 1. Mandatory Origin check: If Origin header is present on mutating request, it MUST match trusted origin
   if (origin) {
+    if (origin === 'null') {
+      res.status(403).json({ error: 'CSRF validation failed: Opaque null Origin rejected.' });
+      return;
+    }
     try {
       const originUrl = new URL(origin);
       const isTrusted =

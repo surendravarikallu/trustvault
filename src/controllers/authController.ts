@@ -14,6 +14,7 @@ import {
   lookupUserByExactEmail,
   setMfaPendingSecret
 } from '../dal/userDal';
+import { createSession, revokeSession } from '../dal/sessionDal';
 import QRCode from 'qrcode';
 import { generateBase32Secret, generateTotpUri } from '../utils/totp';
 import { encryptMfaSecret } from '../utils/mfaCrypto';
@@ -63,8 +64,9 @@ export async function register(req: Request, res: Response): Promise<void> {
     role: Role.VIEWER
   });
 
+  const sessionId = await createSession(newUser.id);
   const token = jwt.sign(
-    { userId: newUser.id, tokenVersion: newUser.tokenVersion },
+    { userId: newUser.id, sessionId, tokenVersion: newUser.tokenVersion },
     config.jwtSecret,
     { algorithm: 'HS256', expiresIn: '8h' }
   );
@@ -147,8 +149,9 @@ export async function login(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  const sessionId = await createSession(user.id);
   const token = jwt.sign(
-    { userId: user.id, tokenVersion: user.tokenVersion },
+    { userId: user.id, sessionId, tokenVersion: user.tokenVersion },
     config.jwtSecret,
     { algorithm: 'HS256', expiresIn: '8h' }
   );
@@ -172,7 +175,11 @@ export async function logout(req: AuthenticatedRequest, res: Response): Promise<
     return;
   }
 
-  // Per-session logout: clears client cookie without invalidating other judges concurrent sessions
+  // Per-session logout: explicitly revokes this specific session ID in DB & Redis
+  if (req.user.sessionId) {
+    await revokeSession(req.user.sessionId);
+  }
+
   clearAuthCookies(res);
   res.json({ message: 'Logged out successfully.' });
 }

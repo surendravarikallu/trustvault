@@ -4,6 +4,7 @@ import { Role } from '../dal/types';
 import { config } from '../config';
 import { getUserById } from '../dal/userDal';
 import { getCachedUserSessionAsync, setCachedUserSession } from '../utils/sessionCache';
+import { isSessionValid } from '../dal/sessionDal';
 
 export interface AuthenticatedUser {
   id: string;
@@ -11,6 +12,7 @@ export interface AuthenticatedUser {
   name: string;
   role: Role;
   tokenVersion: number;
+  sessionId: string;
 }
 
 export interface AuthenticatedRequest extends Request {
@@ -19,12 +21,15 @@ export interface AuthenticatedRequest extends Request {
 
 interface JwtPayload {
   userId: string;
+  sessionId?: string;
+  jti?: string;
   tokenVersion: number;
+  purpose?: string;
 }
 
 /**
  * Authentication Middleware.
- * Supports dual-channel: HttpOnly Cookies and Authorization: Bearer.
+ * Enforces single-channel __Host- session cookie, per-session revocation, and role/tokenVersion freshness.
  * Defense against Loophole L-01: Privilege Demotion Lag & Token Replay.
  */
 export async function authenticate(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
@@ -45,6 +50,18 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
 
     if (!decoded.userId) {
       res.status(401).json({ error: 'Invalid token payload.' });
+      return;
+    }
+
+    // Barrier: MFA challenge or enrollment tokens cannot be used as session credentials
+    if (decoded.purpose === 'MFA_CHALLENGE' || decoded.purpose === 'MFA_ENROLL') {
+      res.status(401).json({ error: 'MFA challenge token cannot be used for session authentication.' });
+      return;
+    }
+
+    const sessionId = decoded.sessionId || decoded.jti;
+    if (!sessionId) {
+      res.status(401).json({ error: 'Session revoked or invalid session ID.' });
       return;
     }
 
@@ -77,12 +94,20 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
       return;
     }
 
+    // Per-Session Revocation check (Database + Redis / in-memory cache)
+    const validSession = await isSessionValid(sessionId);
+    if (!validSession) {
+      res.status(401).json({ error: 'Session has been logged out or revoked.' });
+      return;
+    }
+
     req.user = {
       id: user.id,
       email: user.email,
       name: user.name,
       role: user.role,
-      tokenVersion: user.tokenVersion
+      tokenVersion: user.tokenVersion,
+      sessionId
     };
 
     next();

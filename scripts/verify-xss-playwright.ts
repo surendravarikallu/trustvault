@@ -1,11 +1,10 @@
 import { chromium } from 'playwright';
-import { PrismaClient, AuditStatus } from '@prisma/client';
+import { AuditStatus } from '@prisma/client';
+import { prisma } from '../src/prisma';
 import { StorageService } from '../src/services/storageService';
 import { logAuditEvent } from '../src/dal/auditDal';
 import fs from 'fs';
 import path from 'path';
-
-const prisma = new PrismaClient();
 
 async function runXssPlaywrightVerification() {
   console.log('--- Starting Playwright End-to-End XSS Audit Verification ---');
@@ -144,9 +143,10 @@ async function runXssPlaywrightVerification() {
     console.log('===============================================================');
   } finally {
     await browser.close();
-    // Cleanup seeded xss doc and audit log
-    await prisma.auditLog.deleteMany({ where: { details: { contains: 'XSS_Detail_' } } });
-    await prisma.document.delete({ where: { id: xssDoc.id } });
+    // Cleanup seeded xss doc (AuditLog is immutable and rejects DELETE via trigger)
+    try {
+      await prisma.document.delete({ where: { id: xssDoc.id } });
+    } catch {}
     if (stored?.storedFilename) {
       await StorageService.deleteFile(stored.storedFilename);
     }

@@ -15,6 +15,8 @@ import {
   consumeMfaBackupCode,
   getUserById
 } from '../dal/userDal';
+import { createSession } from '../dal/sessionDal';
+import { redisIncr, redisDel } from '../utils/redis';
 import {
   encryptMfaSecret,
   decryptMfaSecret,
@@ -174,6 +176,13 @@ export async function verifyLoginMFA(req: Request, res: Response): Promise<void>
     return;
   }
 
+  const attemptKey = `mfa_attempts:${payload.userId}`;
+  const attempts = await redisIncr(attemptKey, 180);
+  if (attempts > 5) {
+    res.status(429).json({ error: 'Too many failed verification attempts. Challenge expired.' });
+    return;
+  }
+
   const mfaState = await getMfaState(payload.userId);
   if (!mfaState || !mfaState.mfaEnabled || !mfaState.mfaSecret) {
     res.status(400).json({ error: 'MFA is not enabled for this account.' });
@@ -238,6 +247,9 @@ export async function verifyLoginMFA(req: Request, res: Response): Promise<void>
     return;
   }
 
+  // Clear failed attempt counter on success
+  redisDel(attemptKey).catch(() => {});
+
   // Log successful login
   await logAuditEvent({
     action: usedBackupCode ? 'MFA_BACKUP_CODE_CONSUMED' : 'MFA_LOGIN_SUCCESS',
@@ -249,9 +261,10 @@ export async function verifyLoginMFA(req: Request, res: Response): Promise<void>
     details: usedBackupCode ? 'MFA login completed via single-use backup code.' : 'MFA login completed via TOTP code.'
   });
 
-  // Issue full 8-hour session token
+  // Issue full 8-hour session token with registered session ID
+  const sessionId = await createSession(mfaState.id);
   const token = jwt.sign(
-    { userId: mfaState.id, tokenVersion: mfaState.tokenVersion },
+    { userId: mfaState.id, sessionId, tokenVersion: mfaState.tokenVersion },
     config.jwtSecret,
     { algorithm: 'HS256', expiresIn: '8h' }
   );
@@ -365,8 +378,9 @@ export async function confirmEnrollMFA(req: Request, res: Response): Promise<voi
   await enableMfa(userId, hashedCodes, currentStep);
 
   const dbUser = await getUserById(userId);
+  const sessionId = await createSession(dbUser!.id);
   const token = jwt.sign(
-    { userId: dbUser!.id, tokenVersion: dbUser!.tokenVersion },
+    { userId: dbUser!.id, sessionId, tokenVersion: dbUser!.tokenVersion },
     config.jwtSecret,
     { algorithm: 'HS256', expiresIn: '8h' }
   );

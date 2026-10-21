@@ -142,6 +142,14 @@ describe('TrustVault 16-Suite Security & Access Control Engine', () => {
       .set('Cookie', eveCookie);
     expect(res.status).toBe(404);
 
+    // Eve attempts to list documents -> Expired grant must NOT appear in document list (visibleDocumentsWhere invariant)
+    const listRes = await request(app)
+      .get('/api/documents')
+      .set('Cookie', eveCookie);
+    expect(listRes.status).toBe(200);
+    const eveDocIds = (listRes.body.documents || []).map((d: any) => d.id);
+    expect(eveDocIds).not.toContain(sharedDocId);
+
     // Clean up Eve's grant
     await request(app)
       .delete(`/api/documents/${sharedDocId}/permissions/${eveUserId}`)

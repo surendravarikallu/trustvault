@@ -11,6 +11,7 @@ import fs from 'fs';
 import path from 'path';
 import { PDFDocument } from 'pdf-lib';
 import { extractAuthCookie } from './testAuth';
+import { createSession } from '../src/dal/sessionDal';
 
 describe('Hardened Attack Vectors Defense Suite (Threats T-48 to T-53)', () => {
   let ownerUser: any;
@@ -41,8 +42,9 @@ describe('Hardened Attack Vectors Defense Suite (Threats T-48 to T-53)', () => {
           tokenVersion: 1
         }
       });
+      const sessionId = await createSession(ownerUser.id);
       const token = jwt.sign(
-        { userId: ownerUser.id, tokenVersion: 1 },
+        { userId: ownerUser.id, sessionId, tokenVersion: 1 },
         config.jwtSecret,
         { expiresIn: '1h', algorithm: 'HS256' }
       );
@@ -382,8 +384,9 @@ describe('Hardened Attack Vectors Defense Suite (Threats T-48 to T-53)', () => {
           tokenVersion: 1
         }
       });
+      const strangerSessionId = await createSession(stranger.id);
       const strangerToken = jwt.sign(
-        { userId: stranger.id, tokenVersion: 1 },
+        { userId: stranger.id, sessionId: strangerSessionId, tokenVersion: 1 },
         config.jwtSecret,
         { expiresIn: '1h', algorithm: 'HS256' }
       );

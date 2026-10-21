@@ -41,6 +41,7 @@ model User {
   documents    Document[]           @relation("DocumentOwner")
   permissions  DocumentPermission[] @relation("UserPermissions")
   grantedPerms DocumentPermission[] @relation("GrantedBy")
+  sessions     Session[]
 
   @@index([email])
 }
@@ -134,3 +135,16 @@ model AuditLog {
   @@index([userId, timestamp])
   @@index([documentId, timestamp])
 }
+
+model Session {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+

@@ -1,7 +1,7 @@
+// eslint-disable-next-line no-restricted-imports
 import { PrismaClient } from '@prisma/client';
 
 declare global {
-  // eslint-disable-next-line no-var
   var __trustvault_prisma__: PrismaClient | undefined;
 }
 

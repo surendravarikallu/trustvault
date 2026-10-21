@@ -520,6 +520,38 @@
      - Added comprehensive tests in `tests/hardened-attacks.test.ts`: `AUTH-CK-01` (zero body token), `AUTH-CK-02` (single `__Host-` cookie with HttpOnly, Secure, Path=/, no Domain), `AUTH-CK-03` (Bearer fallback rejected), `AUTH-CK-04` (legacy cookie rejected), `CSRF-01` (cross-origin POST rejected with 403), `CORS-01` (ACAO absent), `CSP-01` (pinned CSP), and `PRV-01` (`?preview=true` behaves like plain download).
 * **Commit:** [`97eae44` - Single-Channel `__Host-` Cookie Auth, Preview Surface Removal & Origin Hardening](https://github.com/surendravarikallu/trustvault/commit/97eae44)
 
+---
+
+### Entry 23: Per-Session Revocation on Logout, Audit Ledger Remediation & Operational Boundaries
+* **Date:** 2026-10-21
+* **Topic:** Individual Session Revocation, Evaluator Concurrency, Mutation Invariant Testing, and AI Operational Boundaries
+* **What I Asked:**  
+  "Address the three reviewer findings: the circular audit check, the logout regression where clearing cookie revokes nothing on the server, and verify all test modifications and database role permissions."
+* **What Was Wrong (Developer Intervention & Review Findings):**  
+  1. **Logout Token Replay Regression:** In Entry 22, the AI attempted to avoid invalidating concurrent evaluators by simply clearing the cookie on logout without invalidating server-side state. This meant an adversary holding a copied cookie could replay requests for the full 8-hour token lifetime. The brief explicitly requires that taking access away works immediately.
+  2. **Audit Ledger Pollution & Circular Verification:** Sequence 257 was the genuine baseline state (head hash `2714673fe6e084137913ab4655c7f764eaf56106c6064565836c2aaf9a7ec45a`). Rows 258 to 338 (81 records) were created by automated test suites running against the production database before test DB redirection was wired. Overwriting the anchor with seq 338 proved nothing about genuine integrity.
+  3. **Mutation Coverage Gap:** Mutation test suites checked `loadDocumentFor`, but the expiry filter in `visibleDocumentsWhere` (which controls `GET /api/documents` and `/api/documents/search`) had no assertion testing if expired document grants leaked in list views. Removing the clause passed the existing suite.
+  4. **AI Operational Boundaries:** The assistant previously traversed outside the repository boundary, reading system service configs and shell history.
+* **What I Did Instead:**  
+  1. **True Per-Session Revocation Architecture (`src/dal/sessionDal.ts`, Prisma `Session` model):**
+     - Introduced persistent `Session` table in PostgreSQL (`id` UUID, `userId`, `expiresAt`, `revokedAt`).
+     - Every login (`/api/auth/login`, `register`, `verifyLoginMFA`) creates a unique session record and embeds `sessionId` (`jti`) into the JWT.
+     - `POST /api/auth/logout` explicitly marks that specific `sessionId` as revoked in PostgreSQL and the distributed Redis/in-memory cache.
+     - `authenticate` middleware verifies that `sessionId` is non-revoked and non-expired.
+     - **Verification (`ID-05`):** Log in twice (Session A and B). Logging out of Session A immediately revokes Session A (replay returns `HTTP 401 Unauthorized`), while Session B remains 100% active (`HTTP 200 OK`). Deactivation or role demotion revokes ALL sessions.
+  2. **Audit Ledger Baseline Confirmation & Role Privileges:**
+     - Confirmed `sequence_number = 257` in production database matches genuine hash `2714673fe6e084137913ab4655c7f764eaf56106c6064565836c2aaf9a7ec45a`.
+     - Confirmed rows 258-338 were test events (`mfa_tester@trustvault.local`).
+     - Confirmed database privileges for `trustvault_app`: `UPDATE`, `DELETE`, and `TRUNCATE` on `AuditLog` strictly fail with PostgreSQL error `42501 permission denied`.
+     - Confirmed `.env` has never been committed in git history (`git log --all --full-history --oneline -- .env` returns empty).
+  3. **Manual Mutation Resistance (`visibleDocumentsWhere`):**
+     - Added test assertion to `tests/security.test.ts` verifying expired grants never leak into `GET /api/documents` list responses.
+     - Performed manual mutation (removed expiry clause): test suite immediately went RED. Restored: returned to 100% GREEN.
+  4. **Strict AI Operational Guidelines (`docs/ai-context.md`):**
+     - Established binding rules restricting AI operations strictly to the repository, forbidding reads of `.env`, shell history, or system services.
+* **Commit:** [`master` - Per-Session Logout Revocation, Mutation Resistance & Audit Boundary Enforcement](https://github.com/surendravarikallu/trustvault)
+
+
 
 
 

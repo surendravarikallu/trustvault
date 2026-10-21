@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { app } from '../src/server';
 import { generateTOTP } from '../src/utils/totp';
+import { encryptMfaSecret } from '../src/utils/mfaCrypto';
 import { prisma } from '../src/prisma';
 import { extractAuthCookie } from './testAuth';
 
@@ -279,6 +280,30 @@ describe('Multi-Factor Authentication (MFA / TOTP) Enterprise Suite', () => {
 
     // Clean up created user
     await prisma.user.deleteMany({ where: { email: newUser.email } });
+  });
+
+  it('MFA-10: First-step MFA challenge token cannot access protected /documents endpoint (HTTP 401)', async () => {
+    // Re-enable MFA for testUser
+    await prisma.user.update({
+      where: { email: testUser.email },
+      data: { mfaEnabled: true, mfaSecret: encryptMfaSecret(mfaSecret) }
+    });
+
+    // Generate an MFA challenge token
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: testUser.email, password: testUser.password });
+
+    const challengeToken = loginRes.body.mfaChallengeToken;
+    expect(challengeToken).toBeDefined();
+
+    // Attacker attempts to use this token in session cookie to access documents
+    const probeRes = await request(app)
+      .get('/api/documents')
+      .set('Cookie', `__Host-trustvault_token=${challengeToken}`);
+
+    expect(probeRes.status).toBe(401);
+    expect(probeRes.body.error).toContain('MFA challenge token cannot be used for session authentication');
   });
 
   afterAll(async () => {

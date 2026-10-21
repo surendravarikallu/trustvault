@@ -1,4 +1,4 @@
-import { Role } from '@prisma/client';
+import { Role } from '../dal/types';
 import { redisGet, redisSet, redisDel, isRedisConnected } from './redis';
 
 export interface CachedUserSession {

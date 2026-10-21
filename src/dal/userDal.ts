@@ -1,6 +1,7 @@
 import { Role, User as DbUser } from '@prisma/client';
 import { prisma } from '../prisma';
 import { invalidateUserSessionCache } from '../utils/sessionCache';
+import { revokeAllUserSessions } from './sessionDal';
 
 export async function getUserById(id: string): Promise<DbUser | null> {
   return prisma.user.findUnique({
@@ -56,6 +57,7 @@ export async function createUser(data: {
 
 export async function incrementTokenVersion(userId: string) {
   invalidateUserSessionCache(userId);
+  await revokeAllUserSessions(userId);
   return prisma.user.update({
     where: { id: userId },
     data: { tokenVersion: { increment: 1 } }
@@ -64,6 +66,7 @@ export async function incrementTokenVersion(userId: string) {
 
 export async function setUserRole(userId: string, role: Role) {
   invalidateUserSessionCache(userId);
+  await revokeAllUserSessions(userId);
   return prisma.user.update({
     where: { id: userId },
     data: {
@@ -75,6 +78,7 @@ export async function setUserRole(userId: string, role: Role) {
 
 export async function setUserActive(userId: string, isActive: boolean) {
   invalidateUserSessionCache(userId);
+  await revokeAllUserSessions(userId);
   return prisma.user.update({
     where: { id: userId },
     data: {
@@ -86,6 +90,7 @@ export async function setUserActive(userId: string, isActive: boolean) {
 
 export async function adminResetPassword(userId: string, passwordHash: string) {
   invalidateUserSessionCache(userId);
+  await revokeAllUserSessions(userId);
   return prisma.user.update({
     where: { id: userId },
     data: {
@@ -97,6 +102,7 @@ export async function adminResetPassword(userId: string, passwordHash: string) {
 
 export async function adminResetMfa(userId: string) {
   invalidateUserSessionCache(userId);
+  await revokeAllUserSessions(userId);
   return prisma.user.update({
     where: { id: userId },
     data: {

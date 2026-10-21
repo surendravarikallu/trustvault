@@ -114,4 +114,59 @@ describe('Identity, Session Revocation & Privilege Matrix Suite', () => {
     expect(probeRes.status).toBe(404);
     expect(probeRes.body.error).toContain('User not found');
   });
+
+  it('ID-05: Per-session logout: Logging out of session A revokes session A (401 on replay) while session B remains valid (200)', async () => {
+    // 1. Log in twice as viewer to establish two concurrent sessions (A and B)
+    const loginARes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'viewer@trustvault.local', password: 'Viewer@TrustVault2026!' });
+    expect(loginARes.status).toBe(200);
+    const cookieA = extractAuthCookie(loginARes);
+
+    const loginBRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'viewer@trustvault.local', password: 'Viewer@TrustVault2026!' });
+    expect(loginBRes.status).toBe(200);
+    const cookieB = extractAuthCookie(loginBRes);
+
+    expect(cookieA).not.toBe(cookieB);
+
+    // 2. Both sessions work initially
+    const checkA = await request(app).get('/api/auth/me').set('Cookie', cookieA);
+    expect(checkA.status).toBe(200);
+    const checkB = await request(app).get('/api/auth/me').set('Cookie', cookieB);
+    expect(checkB.status).toBe(200);
+
+    // 3. User logs out from Session A
+    const logoutRes = await request(app)
+      .post('/api/auth/logout')
+      .set('Cookie', cookieA);
+    expect(logoutRes.status).toBe(200);
+
+    // 4. Replaying Cookie A MUST return 401 Unauthorized immediately
+    const replayA = await request(app)
+      .get('/api/auth/me')
+      .set('Cookie', cookieA);
+    expect(replayA.status).toBe(401);
+    expect(replayA.body.error).toContain('Session has been logged out or revoked');
+
+    // 5. Session B MUST still work (status 200) so concurrent judges/evaluators are not logged out
+    const stillActiveB = await request(app)
+      .get('/api/auth/me')
+      .set('Cookie', cookieB);
+    expect(stillActiveB.status).toBe(200);
+    expect(stillActiveB.body.user.email).toBe('viewer@trustvault.local');
+  });
+
+  it('ID-06: CSRF protection rejects mutating request with opaque null Origin (HTTP 403)', async () => {
+    const res = await request(app)
+      .post('/api/documents')
+      .set('Cookie', ownerCookie)
+      .set('Origin', 'null')
+      .send({ title: 'Adversary CSRF Upload' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toContain('CSRF validation failed');
+  });
 });
+
