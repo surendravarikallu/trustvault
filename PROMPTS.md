@@ -549,7 +549,7 @@
      - Performed manual mutation (removed expiry clause): test suite immediately went RED. Restored: returned to 100% GREEN.
   4. **Strict AI Operational Guidelines (`docs/ai-context.md`):**
      - Established binding rules restricting AI operations strictly to the repository, forbidding reads of `.env`, shell history, or system services.
-* **Commit:** [`master` - Per-Session Logout Revocation, Mutation Resistance & Audit Boundary Enforcement](https://github.com/surendravarikallu/trustvault)
+* **Commit:** [`83a404b` - Per-Session Logout Revocation, Mutation Resistance & Audit Boundary Enforcement](https://github.com/surendravarikallu/trustvault/commit/83a404b)
 
 
 
