@@ -4,6 +4,7 @@ module.exports = {
       name: 'trustvault',
       script: 'dist/src/server.js',
       cwd: 'c:\\Users\\Admin\\Documents\\trustvault',
+      exec_mode: 'fork',
       instances: 1,
       autorestart: true,
       watch: false,

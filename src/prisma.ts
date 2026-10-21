@@ -22,7 +22,9 @@ export const prisma =
       db: {
         url: process.env.NODE_ENV === 'test'
           ? (process.env.TEST_DATABASE_URL || config.testDatabaseUrl)
-          : (process.env.DATABASE_URL || config.databaseUrl)
+          : process.env.NODE_ENV === 'production'
+            ? (process.env.APP_DATABASE_URL || config.appDatabaseUrl)
+            : (process.env.DATABASE_URL || config.databaseUrl)
       }
     },
     log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error']
