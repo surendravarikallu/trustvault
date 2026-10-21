@@ -73,6 +73,12 @@ export function getRequestContext(req: AuthenticatedRequest): RequestContext {
   return { ip: resolvedIp, userAgent: sanitizedUa };
 }
 
+export function sanitizeDocumentDto(doc: any): any {
+  if (!doc) return doc;
+  const { storedFilename, ...safe } = doc;
+  return safe;
+}
+
 const CreateDocumentSchema = z.object({
   title: z.string().min(1, 'Title is required').max(255),
   description: z.string().optional(),
@@ -127,10 +133,11 @@ export async function uploadDocument(req: AuthenticatedRequest, res: Response): 
       getRequestContext(req)
     );
 
+    const safeDoc = sanitizeDocumentDto(doc);
     res.status(201).json({
       message: 'Document uploaded successfully.',
-      document: doc,
-      ...doc
+      document: safeDoc,
+      ...safeDoc
     });
   } catch (error: any) {
     if (stored?.storedFilename) {
@@ -186,7 +193,7 @@ export async function getDocumentById(req: AuthenticatedRequest, res: Response):
 
   try {
     const { document } = await loadDocumentFor(user, id, 'read', getRequestContext(req));
-    res.json({ document });
+    res.json({ document: sanitizeDocumentDto(document) });
   } catch (error: any) {
     if (error instanceof NotFoundError) {
       res.status(404).json({ error: 'Document not found.' });
@@ -361,7 +368,7 @@ export async function replaceDocumentFile(req: AuthenticatedRequest, res: Respon
 
     res.json({
       message: 'New file version uploaded and previous version preserved in history.',
-      document: updated
+      document: sanitizeDocumentDto(updated)
     });
   } catch (error: any) {
     // Clean up permanently stored file if database transaction failed

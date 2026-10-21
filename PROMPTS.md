@@ -551,6 +551,42 @@
      - Established binding rules restricting AI operations strictly to the repository, forbidding reads of `.env`, shell history, or system services.
 * **Commit:** [`83a404b` - Per-Session Logout Revocation, Mutation Resistance & Audit Boundary Enforcement](https://github.com/surendravarikallu/trustvault/commit/83a404b)
 
+---
+
+### Entry 24: Runtime Superuser Audit Finding, Hardcoded Credential Purge, Boot Assertion & Section 3 Verification Matrix
+* **Date:** 2026-10-21
+* **Topic:** PostgreSQL Superuser Runtime Remediation, Fail-Fast Env Configuration, Boot-Time Role Assertion, DTO Leak Sanitization, and Section 3 Verification Matrix
+* **What I Asked:**  
+  "Address reviewer critique regarding runtime superuser connection, hardcoded credential fallbacks in config, audit verification baseline, and missing cross-user probe matrix."
+* **What the AI Proposed:**  
+  The AI previously reported role separation as completed in documentation and test scripts, but in the actual production runtime `src/prisma.ts` was still selecting `DATABASE_URL` (connecting as PostgreSQL superuser `postgres:admin`). Additionally, `src/config.ts` had fallback credentials (`postgres:admin` and `app_secure_password`), `.env.example` contained real development password strings, and `/api/health` leaked process heap memory, latency, and marketing strings.
+* **What Was Wrong (Developer Intervention & Review Finding):**  
+  1. **Superuser Runtime Reality Gap:** The AI reported role separation as done, yet in production the application was still running as superuser until this morning. The "INSERT-only" audit immutability claims in the documentation were therefore not enforced in production runtime because superuser connections bypass non-owner row-level triggers and table grants. Tests that previously ran as superuser could not catch a missing grant.
+  2. **Hardcoded Credential Fallbacks (CWE-798):** Fallback strings in `src/config.ts` meant that an omitted or misspelled environment variable in production would silently fall back to default credentials rather than failing fast.
+  3. **Lack of Runtime Assertion:** Without an active assertion querying `pg_roles` at server startup, future configuration drifts could reconnect as a superuser without detection.
+  4. **DTO Information Leakage:** `getDocumentById` returned the raw Prisma model containing `storedFilename`, exposing the internal filesystem UUID to clients.
+* **What I Did Instead:**  
+  1. **Enforced Fail-Fast Configuration & Complete Credential Purge:**
+     - Purged all hardcoded passwords and connection strings from `src/config.ts`, `prisma/setup-roles.sql`, and `CONTEXT_HANDOVER.md`.
+     - Replaced all values in `.env.example` with strict placeholders (`<STRONG_APP_PASSWORD>`, `<GENERATE_RANDOM_256BIT_SECRET_HEX>`).
+     - In `src/prisma.ts` and `src/config.ts`, configured `resolveDatabaseUrl()` to strictly require `APP_DATABASE_URL` in production, throwing a fatal exception if missing without ever falling back to `DATABASE_URL`.
+  2. **Boot-Time Non-Privileged Role Assertion:**
+     - Added `assertNonPrivilegedRuntimeRole()` in `src/server.ts` executing `SELECT current_user AS role_name, (rolsuper OR rolcreatedb OR rolcreaterole) AS is_privileged FROM pg_roles WHERE rolname = current_user`.
+     - The production server halts startup if the active role possesses superuser, createdb, or createrole privileges.
+     - Created unit test suite `tests/runtime-role-assertion.test.ts` verifying fail-fast on missing `APP_DATABASE_URL` and role privilege enforcement.
+  3. **Health Check & Cache Hardening:**
+     - Simplified `/api/health` to return strictly `{"status":"ok"}` (200 OK) or `{"status":"error"}` (503 Service Unavailable), removing internal memory statistics, latency numbers, and marketing descriptions.
+     - Added global `Cache-Control: no-store` header on all `/api/*` routes.
+  4. **Preserved Blackbox Test Suites:**
+     - Created `tests/blackbox/session-revocation.ts` driven by `BASE_URL` to verify database-persisted session revocation across logins and PM2 reloads.
+     - Created `tests/blackbox/cross-user-probes.ts` driven by `BASE_URL` covering the Section 3 authorization matrix.
+  5. **DTO Sanitization & Section 3 Authorization Matrix:**
+     - Implemented `sanitizeDocumentDto` in `src/controllers/documentController.ts` and removed `storedFilename: true` from `getDocumentVersions` in `src/dal/documentDal.ts`.
+     - Added `requireUploaderRole` to reject VIEWER uploads with HTTP 403 before file upload processing.
+     - Executed full Section 3 automated probes: verified that Eve receives identical 404 responses for real vs nonexistent document IDs across all routes (no existence oracle), zero DTO leaks across all endpoints, and strict 403 barriers across all admin and upload endpoints.
+* **Commit:** [`master` - Runtime Superuser Audit Remediation, Credential Purge, Boot Assertion & Section 3 Access Matrix](https://github.com/surendravarikallu/trustvault)
+
+
 
 
 

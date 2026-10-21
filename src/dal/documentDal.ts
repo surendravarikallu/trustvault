@@ -496,7 +496,6 @@ export async function getDocumentVersions(
     select: {
       id: true,
       versionNumber: true,
-      storedFilename: true,
       fileSize: true,
       fileHash: true,
       createdAt: true,

@@ -4,7 +4,7 @@
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'trustvault_app') THEN
-    CREATE USER trustvault_app WITH PASSWORD 'app_secure_password';
+    CREATE USER trustvault_app WITH PASSWORD '<APP_DB_PASSWORD>';
   END IF;
 END
 $$;

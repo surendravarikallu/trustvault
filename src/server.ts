@@ -11,8 +11,24 @@ import { documentRouter } from './routes/documentRoutes';
 import { adminRouter } from './routes/adminRoutes';
 
 import { pingDatabaseHealth } from './dal/backupDal';
+import { prisma } from './prisma';
 
 export const app = express();
+
+/**
+ * Asserts that the active database connection does not possess superuser,
+ * createdb, or createrole privileges. Refuses server boot if true.
+ */
+export async function assertNonPrivilegedRuntimeRole(): Promise<void> {
+  const result: any = await prisma.$queryRawUnsafe(
+    'SELECT current_user AS role_name, (rolsuper OR rolcreatedb OR rolcreaterole) AS is_privileged FROM pg_roles WHERE rolname = current_user'
+  );
+  if (result?.[0]?.is_privileged) {
+    throw new Error(
+      `CRITICAL SECURITY VIOLATION: Refusing to start server. The application database connection is running as privileged role '${result[0].role_name}' (rolsuper, rolcreatedb, or rolcreaterole is true). Production runtime must connect via the least-privileged 'trustvault_app' role.`
+    );
+  }
+}
 
 // 1. Reverse proxy configuration for Cloudflare Tunnel (1 hop)
 app.set('trust proxy', 1);
@@ -47,6 +63,12 @@ app.use(
 app.use(cookieParser());
 app.use(csrfProtection);
 
+// Enforce no-store on all API endpoints to prevent intermediate proxy/browser caching of authenticated data
+app.use('/api', (_req: Request, res: Response, next: NextFunction) => {
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
+
 // 4. Global IP rate limiter: Configurable threshold, bypasses internal health probes
 const globalLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -62,42 +84,14 @@ app.use(globalLimiter);
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 
-// 6. Deep health check endpoint with database probe & system metrics (2.5s micro-cache to eliminate tail latency under bursts)
-let lastDbHealthTime = 0;
-let cachedDbStatus = 'connected';
-let cachedDbLatencyMs = 0;
-
+// 6. Public health check endpoint: Returns minimal status without leaking internal metrics or marketing names
 app.get('/api/health', async (_req: Request, res: Response) => {
-  const now = Date.now();
-  if (now - lastDbHealthTime > 2500) {
-    try {
-      const dbPing = await pingDatabaseHealth();
-      cachedDbLatencyMs = dbPing.latencyMs;
-      cachedDbStatus = 'connected';
-      lastDbHealthTime = now;
-    } catch {
-      cachedDbStatus = 'disconnected';
-    }
+  try {
+    await pingDatabaseHealth();
+    res.status(200).json({ status: 'ok' });
+  } catch {
+    res.status(503).json({ status: 'error' });
   }
-
-  const mem = process.memoryUsage();
-  const isHealthy = cachedDbStatus === 'connected';
-
-  res.status(isHealthy ? 200 : 503).json({
-    status: isHealthy ? 'healthy' : 'degraded',
-    system: 'TrustVault Zero-Trust Security Engine',
-    timestamp: new Date().toISOString(),
-    uptimeSeconds: Math.floor(process.uptime()),
-    database: {
-      status: cachedDbStatus,
-      latencyMs: cachedDbLatencyMs
-    },
-    memory: {
-      rssMb: Math.round((mem.rss / 1024 / 1024) * 100) / 100,
-      heapUsedMb: Math.round((mem.heapUsed / 1024 / 1024) * 100) / 100,
-      heapTotalMb: Math.round((mem.heapTotal / 1024 / 1024) * 100) / 100
-    }
-  });
 });
 
 // 7. Route registration
@@ -140,13 +134,24 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 
 // Start server if executed directly
 if (require.main === module) {
-  const PORT = config.port;
-  // Strictly bind to 127.0.0.1 (targets Cloudflare Tunnel ingress)
-  app.listen(PORT, '127.0.0.1', () => {
-    console.log(`=======================================================`);
-    console.log(` TrustVault Security Engine running on 127.0.0.1:${PORT}`);
-    console.log(` Environment: ${config.nodeEnv}`);
-    console.log(` Ingress: Bound to loopback for Cloudflare Tunnel`);
-    console.log(`=======================================================`);
+  const startServer = async () => {
+    if (config.nodeEnv === 'production') {
+      await assertNonPrivilegedRuntimeRole();
+    }
+    const PORT = config.port;
+    // Strictly bind to 127.0.0.1 (targets Cloudflare Tunnel ingress)
+    app.listen(PORT, '127.0.0.1', () => {
+      console.log(`=======================================================`);
+      console.log(` TrustVault Security Engine running on 127.0.0.1:${PORT}`);
+      console.log(` Environment: ${config.nodeEnv}`);
+      console.log(` Ingress: Bound to loopback for Cloudflare Tunnel`);
+      console.log(` Database Role: Non-privileged runtime enforced`);
+      console.log(`=======================================================`);
+    });
+  };
+
+  startServer().catch((err) => {
+    console.error('FATAL: Server boot aborted due to security assertion:', err.message);
+    process.exit(1);
   });
 }

@@ -1,5 +1,6 @@
-import { Router } from 'express';
-import { authenticate } from '../middleware/auth';
+import { Router, Response, NextFunction } from 'express';
+import { authenticate, AuthenticatedRequest } from '../middleware/auth';
+import { Role } from '../dal/types';
 import { multerUpload, validateUploadedFile } from '../middleware/uploadValidator';
 import {
   uploadDocument,
@@ -23,8 +24,17 @@ export const documentRouter = Router();
 // All document routes require active authenticated session
 documentRouter.use(authenticate);
 
+// Defense against Loophole L-05: Restrict VIEWERs before file buffer/temp processing
+function requireUploaderRole(req: AuthenticatedRequest, res: Response, next: any): void {
+  if (req.user?.role === Role.VIEWER) {
+    res.status(403).json({ error: 'Viewers cannot upload documents. Owner promotion required.' });
+    return;
+  }
+  next();
+}
+
 // Document CRUD & Search
-documentRouter.post('/', multerUpload.single('file'), validateUploadedFile, uploadDocument);
+documentRouter.post('/', requireUploaderRole, multerUpload.single('file'), validateUploadedFile, uploadDocument);
 documentRouter.get('/', getDocuments);
 documentRouter.get('/search', searchDocs);
 documentRouter.get('/:id', getDocumentById);

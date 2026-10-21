@@ -27,19 +27,12 @@ beforeAll(async () => {
 });
 
 describe('Disaster Recovery, Cryptographic Backups & Storage Encryption Suite', () => {
-  it('DR-01: Deep health check endpoint returns DB round-trip latency, memory stats and uptime', async () => {
+  it('DR-01: Public health check endpoint returns minimal status without leaking internal metrics or marketing names', async () => {
     const res = await request(app).get('/api/health');
 
     expect(res.status).toBe(200);
-    expect(res.body.status).toBe('healthy');
-    expect(res.body.system).toBe('TrustVault Zero-Trust Security Engine');
-    expect(res.body.database).toBeDefined();
-    expect(res.body.database.status).toBe('connected');
-    expect(typeof res.body.database.latencyMs).toBe('number');
-    expect(res.body.database.latencyMs).toBeGreaterThanOrEqual(0);
-    expect(res.body.memory).toBeDefined();
-    expect(res.body.memory.heapUsedMb).toBeGreaterThan(0);
-    expect(res.body.uptimeSeconds).toBeGreaterThanOrEqual(0);
+    expect(res.body).toEqual({ status: 'ok' });
+    expect(res.headers['cache-control']).toBe('no-store');
   });
 
   it('DR-02: Envelope Encryption At Rest encrypts files with AES-256-GCM and header verification', async () => {

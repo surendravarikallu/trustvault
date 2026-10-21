@@ -87,7 +87,7 @@
 2. **Application Role (`trustvault_app`):** Runtime role used by Node.js server:
    ```sql
    -- Run once as superuser:
-   CREATE USER trustvault_app WITH PASSWORD 'app_secure_password';
+   CREATE USER trustvault_app WITH PASSWORD '<APP_ROLE_PASSWORD>';
    GRANT CONNECT ON DATABASE trustvault TO trustvault_app;
    GRANT USAGE ON SCHEMA public TO trustvault_app;
    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO trustvault_app;
