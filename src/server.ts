@@ -10,25 +10,10 @@ import { authRouter } from './routes/authRoutes';
 import { documentRouter } from './routes/documentRoutes';
 import { adminRouter } from './routes/adminRoutes';
 
-import { pingDatabaseHealth } from './dal/backupDal';
-import { prisma } from './prisma';
+import { pingDatabaseHealth, assertNonPrivilegedRuntimeRole } from './dal/backupDal';
+export { assertNonPrivilegedRuntimeRole };
 
 export const app = express();
-
-/**
- * Asserts that the active database connection does not possess superuser,
- * createdb, or createrole privileges. Refuses server boot if true.
- */
-export async function assertNonPrivilegedRuntimeRole(): Promise<void> {
-  const result: any = await prisma.$queryRawUnsafe(
-    'SELECT current_user AS role_name, (rolsuper OR rolcreatedb OR rolcreaterole) AS is_privileged FROM pg_roles WHERE rolname = current_user'
-  );
-  if (result?.[0]?.is_privileged) {
-    throw new Error(
-      `CRITICAL SECURITY VIOLATION: Refusing to start server. The application database connection is running as privileged role '${result[0].role_name}' (rolsuper, rolcreatedb, or rolcreaterole is true). Production runtime must connect via the least-privileged 'trustvault_app' role.`
-    );
-  }
-}
 
 // 1. Reverse proxy configuration for Cloudflare Tunnel (1 hop)
 app.set('trust proxy', 1);
