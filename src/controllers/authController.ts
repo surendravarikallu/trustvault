@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
-import { Role } from '../dal/types';
+import { Role, AuditStatus } from '../dal/types';
 import { config } from '../config';
 import { AuthenticatedRequest } from '../middleware/auth';
 import {
@@ -19,6 +19,12 @@ import QRCode from 'qrcode';
 import { generateBase32Secret, generateTotpUri } from '../utils/totp';
 import { encryptMfaSecret } from '../utils/mfaCrypto';
 import { setAuthCookies, clearAuthCookies } from '../utils/authCookies';
+import { redisIncr, redisDel } from '../utils/redis';
+import { logAuditEvent } from '../dal/auditDal';
+
+// Per-account brute-force lockout threshold
+const MAX_LOGIN_ATTEMPTS = 10;
+const LOGIN_LOCKOUT_WINDOW_SECONDS = 15 * 60; // 15 minutes
 
 // Dummy hash generated with bcrypt 12 rounds for timing attack neutralization (L-08)
 const DUMMY_BCRYPT_HASH = '$2b$12$e80yqV0rYyXq4r.15G8aTuOsqaVq6Vw5lZlOfeFm8Q1Vn6eYdKkhe';
@@ -93,6 +99,24 @@ export async function login(req: Request, res: Response): Promise<void> {
 
   const { email, username, usernameOrEmail, password } = parseResult.data;
   const identifier = (email || username || usernameOrEmail || '').trim();
+
+  // Per-account brute-force lockout check (CWE-307 - Threat T-61)
+  const accountLockKey = `login_attempts:${identifier.toLowerCase()}`;
+  const attemptCount = await redisIncr(accountLockKey, LOGIN_LOCKOUT_WINDOW_SECONDS);
+  if (attemptCount > MAX_LOGIN_ATTEMPTS) {
+    await logAuditEvent({
+      action: 'ACCOUNT_LOCKOUT_TRIGGERED',
+      userId: null,
+      userEmail: identifier,
+      status: AuditStatus.DENIED,
+      ipAddress: req.ip || '127.0.0.1',
+      userAgent: (req.headers['user-agent'] || 'Unknown').toString().slice(0, 512),
+      details: `Account temporarily locked after ${attemptCount} failed login attempts within 15 minutes.`
+    }).catch(() => {});
+    res.status(429).json({ error: 'Account temporarily locked due to too many failed login attempts. Please try again after 15 minutes.' });
+    return;
+  }
+
   const user = await getUserByEmailOrUsername(identifier);
 
   if (!user || !user.isActive) {
@@ -107,6 +131,9 @@ export async function login(req: Request, res: Response): Promise<void> {
     res.status(401).json({ error: 'Invalid username/email or password.' });
     return;
   }
+
+  // Clear brute-force counter on successful credential verification
+  redisDel(accountLockKey).catch(() => {});
 
   // Multi-Factor Authentication (RFC 6238 TOTP): Intercept credentials and require 2FA challenge
   if (user.mfaEnabled) {

@@ -38,6 +38,8 @@ async function login(usernameOrEmail: string, password: string): Promise<LoginRe
   if (!res.ok) {
     throw new Error(`Login failed for ${usernameOrEmail}: ${data.error}`);
   }
+  const setCookie = res.headers.get('set-cookie');
+  data.token = setCookie ? setCookie.split(';')[0] : '';
   return data;
 }
 
@@ -61,7 +63,7 @@ async function uploadPdf(token: string, title: string, filename: string): Promis
   const res = await fetch(`${BASE_URL}/api/documents`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${token}`,
+      'Cookie': token,
       'Content-Type': `multipart/form-data; boundary=${boundary}`
     },
     body: fullBody
@@ -78,7 +80,7 @@ async function grantAccess(token: string, docId: string, targetEmail: string, pe
   const res = await fetch(`${BASE_URL}/api/documents/${docId}/permissions`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${token}`,
+      'Cookie': token,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
@@ -96,7 +98,7 @@ async function grantAccess(token: string, docId: string, targetEmail: string, pe
 
 async function listVault(token: string): Promise<any[]> {
   const res = await fetch(`${BASE_URL}/api/documents`, {
-    headers: { 'Authorization': `Bearer ${token}` }
+    headers: { 'Cookie': token }
   });
   const data = await res.json();
   if (!res.ok) {
@@ -108,7 +110,7 @@ async function listVault(token: string): Promise<any[]> {
 async function downloadDocument(token: string, docId: string, isPreview = false): Promise<{ status: number; bytes: number; contentDisposition: string | null }> {
   const url = isPreview ? `${BASE_URL}/api/documents/${docId}/download?preview=true` : `${BASE_URL}/api/documents/${docId}/download`;
   const res = await fetch(url, {
-    headers: { 'Authorization': `Bearer ${token}` }
+    headers: { 'Cookie': token }
   });
 
   if (!res.ok) {
@@ -139,7 +141,7 @@ async function replaceFile(token: string, docId: string, filename: string): Prom
   const res = await fetch(`${BASE_URL}/api/documents/${docId}`, {
     method: 'PUT',
     headers: {
-      'Authorization': `Bearer ${token}`,
+      'Cookie': token,
       'Content-Type': `multipart/form-data; boundary=${boundary}`
     },
     body: fullBody
@@ -259,7 +261,7 @@ async function main() {
   console.log('\n--- STEP 10: Admin Verifies Cryptographic Audit Ledger ---');
   const adminAuth = await login('admin', 'Admin@TrustVault2026!');
   const auditRes = await fetch(`${BASE_URL}/api/admin/audit-verify`, {
-    headers: { 'Authorization': `Bearer ${adminAuth.token}` }
+    headers: { 'Cookie': adminAuth.token }
   });
   const auditData = await auditRes.json();
   console.log(`[✓] Audit HMAC Chain Valid: ${auditData.valid}`);

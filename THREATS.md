@@ -526,6 +526,32 @@ TrustVault handles sensitive enterprise documents under a strict **Zero-Trust & 
   - `assertNonPrivilegedRuntimeRole()` in `src/dal/backupDal.ts` asserts that `current_user === 'trustvault_app'` and verifies non-superuser status on startup.
 * **Automated Test:** `tests/runtime-role-assertion.test.ts`.
 
+#### T-61: Per-Account Distributed Brute-Force Lockout & Credential Stuffing Defense (CWE-307)
+* **Attacker Scenario:** An adversary rotates IP addresses (via botnet or proxy mesh) to conduct distributed credential stuffing or password brute-force against a specific high-value corporate account (e.g. `admin@trustvault.local`), circumventing traditional per-IP rate limiters.
+* **Defense Mechanism:**
+  - In `src/controllers/authController.ts`, login attempts are tracked per targeted account identifier via Redis: `login_attempts:${identifier.toLowerCase()}`.
+  - Enforces a sliding 15-minute lockout window with a strict 10-attempt threshold (`MAX_LOGIN_ATTEMPTS = 10`).
+  - Breaching the threshold triggers immediate rejection with `HTTP 429 Too Many Requests` and logs an `ACCOUNT_LOCKOUT_TRIGGERED` audit event with `status: DENIED` in the HMAC-SHA256 ledger.
+  - Successful authentication immediately clears the counter, ensuring zero latency impact on legitimate credential holders.
+* **Automated Verification:** Verified in `tests/hardened-attacks.test.ts` and `scripts/simulate-user-flows.ts`.
+
+#### T-62: W3C Fetch Metadata Cross-Site Boundary Defense & Strict Origin Isolation (CWE-352)
+* **Attacker Scenario:** An adversary lures an authenticated user to `https://evil.example`, attempting to trigger state-mutating API requests via cross-site form submissions, `fetch()` calls, or embedded image probes while an active session exists.
+* **Defense Mechanism:**
+  - In `src/middleware/csrf.ts`, mutating HTTP methods (`POST`, `PUT`, `DELETE`, `PATCH`) inspect tamper-proof W3C Fetch Metadata headers.
+  - Requests presenting `Sec-Fetch-Site: cross-site` are rejected immediately with `HTTP 403 Forbidden` (`"CSRF validation failed: Cross-site request rejected."`) before reaching controllers or data access layers.
+  - Multi-tier defense-in-depth: combines `Sec-Fetch-Site` inspection, strict `Origin` header whitelist validation against configured production domains, and fallback `Referer` validation.
+  - CORS middleware is eliminated entirely; the application functions in pure same-origin mode.
+* **Automated Verification:** Verified in `tests/hardened-attacks.test.ts` (`CSRF-01`, `CSRF-02`).
+
+#### T-63: Pure SameSite=Strict Cookie Channel Enforcement (CWE-1275)
+* **Attacker Scenario:** An attacker relies on browser default cookie transmission policies or `SameSite=Lax` exemptions (such as top-level navigation GET requests or window openers) to trigger ambient credential transmission on external links.
+* **Defense Mechanism:**
+  - In `src/utils/authCookies.ts`, the `__Host-trustvault_token` session cookie is configured strictly with `sameSite: 'strict'` across both issuance (`setAuthCookies`) and clearing (`clearAuthCookies`).
+  - Browsers refuse to attach `SameSite=Strict` cookies on any cross-site request, including external link clicks, top-level navigations from third-party sites, or iframe embeds.
+  - Combined with `HttpOnly`, `Secure`, and `Path=/` attributes, credentials remain strictly isolated to same-origin user interactions.
+* **Automated Verification:** Verified in `tests/hardened-attacks.test.ts` (`AUTH-CK-02`).
+
 ---
 
 ## 6. Threat Traceability & Verification Summary
@@ -536,13 +562,13 @@ TrustVault handles sensitive enterprise documents under a strict **Zero-Trust & 
 | **B: Existence Shielding & Oracles** | `T-07` to `T-10` | `tests/security.test.ts`, `tests/identity-revocation.test.ts` | 5 | 6 |
 | **C: Storage, Upload & Data Destruction** | `T-11` to `T-14`, `T-38`, `T-39` | `tests/upload-hardening.test.ts`, `tests/threat-retention.test.ts` | 12 | 4 |
 | **D: Cryptographic Audit Ledger** | `T-15` to `T-18`, `T-31`, `T-56` | `tests/audit.test.ts`, `tests/audit-tamper-immutability.test.ts` | 6 | 5 |
-| **E: Infrastructure, Auth & Transport** | `T-19` to `T-22`, `T-27` to `T-30`, `T-60` | `tests/security.test.ts`, `tests/runtime-role-assertion.test.ts` | 9 | 5 |
+| **E: Infrastructure, Auth & Transport** | `T-19` to `T-22`, `T-27` to `T-30`, `T-60`, `T-61` | `tests/security.test.ts`, `tests/runtime-role-assertion.test.ts` | 10 | 5 |
 | **F: Resource & Application Protection** | `T-23` to `T-26`, `T-36`, `T-37`, `T-59` | `tests/upload-hardening.test.ts`, `tests/backup-disaster-recovery.test.ts` | 7 | 3 |
 | **G: Multi-Factor Authentication** | `T-32`, `T-41` | `tests/mfa-totp.test.ts` | 9 | 1 |
 | **H: Disaster Recovery & Encryption** | `T-34`, `T-35`, `T-52` | `tests/backup-disaster-recovery.test.ts`, `tests/hardened-attacks.test.ts` | 7 | 3 |
 | **I: Ephemeral Sharing & Governance** | `T-43` to `T-47` | `tests/governance-and-sharing.test.ts` | 5 | 3 |
-| **J: Advanced Hardened Attack Vectors** | `T-48` to `T-55`, `T-57`, `T-58` | `tests/hardened-attacks.test.ts` | 22 | 8 |
-| **TOTALS** | **60 Modeled Threats (T-01 to T-60)** | **12 Automated Test Suites** | **83 Tests** | **50 Scenarios** |
+| **J: Advanced Hardened Attack Vectors** | `T-48` to `T-55`, `T-57`, `T-58`, `T-62`, `T-63` | `tests/hardened-attacks.test.ts` | 25 | 8 |
+| **TOTALS** | **63 Modeled Threats (T-01 to T-63)** | **12 Automated Test Suites** | **87 Tests** | **50+ Scenarios** |
 
 
 

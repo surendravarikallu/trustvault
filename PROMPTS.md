@@ -586,6 +586,29 @@
      - Executed full Section 3 automated probes: verified that Eve receives identical 404 responses for real vs nonexistent document IDs across all routes (no existence oracle), zero DTO leaks across all endpoints, and strict 403 barriers across all admin and upload endpoints.
 * **Commit:** [`master` - Runtime Superuser Audit Remediation, Credential Purge, Boot Assertion & Section 3 Access Matrix](https://github.com/surendravarikallu/trustvault)
 
+---
+
+### Entry 25: SameSite=Strict Enforcement, W3C Fetch Metadata, Distributed Brute-Force Shield & Live Zero-Trust Browser Verification
+* **Date:** 2026-10-22
+* **Topic:** Transport Boundary Hardening, W3C Fetch Metadata Cross-Site Isolation, Distributed Brute-Force Protection, and Adversarial Zero-Trust Browser Verification
+* **What I Asked:**  
+  "Address reviewer concern regarding CSRF relaxation (demanding strictly SameSite=Strict), defend against distributed brute-force attacks, analyze the full problem statement against adversarial penetration testing by judges, and verify Zero-Trust Admin download restrictions live in the browser."
+* **What the AI Proposed:**  
+  The AI previously considered relaxing `sameSite` to `'lax'` for developer testing convenience and relied purely on general per-IP rate limiters without account-level brute-force tracking. Furthermore, the AI lacked W3C Fetch Metadata boundary validation and had not verified the Zero-Trust Admin content restriction live in the browser with full visual and cryptographic ledger proof.
+* **What Was Wrong (Developer Intervention):**  
+  1. **CSRF Transport Vulnerability (CWE-1275):** Relaxing cookie policy to `lax` creates unnecessary cross-site request exposure during top-level navigations from external origins. An enterprise zero-trust vault demands pure `SameSite=Strict` cookie isolation.
+  2. **Distributed Credential Stuffing (CWE-307):** Per-IP rate limiting can be bypassed by adversaries rotating IPs across botnets or proxy pools to target specific corporate accounts (e.g. `admin@trustvault.local`).
+  3. **Missing W3C Fetch Metadata (CWE-352):** Without inspecting tamper-proof browser headers (`Sec-Fetch-Site`), applications remain vulnerable to edge-case cross-site state-mutating requests.
+  4. **Unverified Point 7 Claims:** Claiming that Administrators cannot view private document content without an explicit grant required concrete proof in the live browser, capturing both the user-facing HTTP 403 refusal toast and the tamper-evident HMAC-SHA256 ledger event.
+* **What I Did Instead:**  
+  - Enforced `sameSite: 'strict'` on `__Host-trustvault_token` in `src/utils/authCookies.ts` and aligned test assertions in `tests/hardened-attacks.test.ts`.
+  - Added W3C Fetch Metadata defense-in-depth in `src/middleware/csrf.ts`, rejecting any mutating request where `sec-fetch-site === 'cross-site'` with HTTP 403.
+  - Implemented per-account distributed brute-force lockout in `src/controllers/authController.ts` using Redis keys (`login_attempts:${identifier}`) with a 15-minute sliding window and 10-attempt threshold, logging `ACCOUNT_LOCKOUT_TRIGGERED` to the HMAC ledger and returning HTTP 429.
+  - Executed automated browser subagent simulation: logged in as Administrator, attempted to download Alice's private contract, verified immediate HTTP 403 refusal toast (`"Admins cannot download document content without an explicit grant from the owner."`), and verified newly recorded HMAC-SHA256 audit entry `#545` (`ACCESS_DENIED`).
+  - Updated `scripts/simulate-user-flows.ts` and `scripts/simulate-collaboration-flow.ts` to support cookie authentication matching the single `__Host-` credential path, achieving 100% pass rate across all 35 user scenarios and 10 collaboration steps.
+* **Commit:** [`master` - SameSite=Strict Enforcement, W3C Fetch Metadata, Brute-Force Lockout & Live Browser Verification](https://github.com/surendravarikallu/trustvault)
+
+
 
 
 

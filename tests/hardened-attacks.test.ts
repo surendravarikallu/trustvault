@@ -114,7 +114,7 @@ describe('Hardened Attack Vectors Defense Suite (Threats T-48 to T-53)', () => {
       expect(cookieHeader).not.toContain('trustvault_token=s:'); // Legacy plain cookie must be absent
       expect(cookieHeader.toLowerCase()).toContain('httponly');
       expect(cookieHeader.toLowerCase()).toContain('secure');
-      expect(cookieHeader.toLowerCase()).toContain('samesite=lax');
+      expect(cookieHeader.toLowerCase()).toContain('samesite=strict');
       expect(cookieHeader).toContain('Path=/');
       // __Host- cookies MUST NOT specify a Domain attribute
       expect(cookieHeader.toLowerCase()).not.toContain('domain=');

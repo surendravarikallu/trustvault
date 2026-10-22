@@ -75,5 +75,12 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
     }
   }
 
+  // 3. Defense-in-depth: Sec-Fetch-Site header (W3C Fetch Metadata, tamper-proof in browsers)
+  const secFetchSite = req.headers['sec-fetch-site'];
+  if (secFetchSite === 'cross-site') {
+    res.status(403).json({ error: 'CSRF validation failed: Cross-site request rejected.' });
+    return;
+  }
+
   next();
 }
