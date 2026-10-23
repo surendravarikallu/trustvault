@@ -32,6 +32,7 @@ erDiagram
     User ||--o{ Document : "owns (DocumentOwner)"
     User ||--o{ DocumentPermission : "has clearance (UserPermissions)"
     User ||--o{ DocumentPermission : "granted by (GrantedBy)"
+    User ||--o{ Session : "maintains sessions (UserSessions)"
     Document ||--o{ DocumentVersion : "maintains versions"
     Document ||--o{ DocumentPermission : "delegates access"
     AuditLog }|..|| User : "references actor (unconstrained)"
@@ -173,6 +174,24 @@ Immutable append-only forensic event ledger. Cryptographically chained via HMAC-
   * `INDEX AuditLog_action_timestamp_idx (action, timestamp)`: Action-specific audit filtering.
   * `INDEX AuditLog_userId_timestamp_idx (userId, timestamp)`: Principal behavioral profiling.
   * `INDEX AuditLog_documentId_timestamp_idx (documentId, timestamp)`: Document lifecycle audit reconstruction.
+
+---
+
+### 2.6 `Session` (Persistent Device Sessions & Instant Revocation)
+Stores individual authenticated sessions. Enables instantaneous per-session logout without invalidating concurrent sessions on shared test accounts.
+
+| Column | Type | Nullable | Default | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `id` | `VARCHAR(36)` | **No** | `uuid()` | Primary Key (Session identifier, matches JWT `jti` claim). |
+| `userId` | `VARCHAR(36)` | **No** | None | Foreign key referencing `User(id)` (`ON DELETE Cascade`). |
+| `createdAt` | `TIMESTAMPTZ` | **No** | `now()` | Session creation timestamp. |
+| `expiresAt` | `TIMESTAMPTZ` | **No** | None | Absolute session expiration deadline (8 hours). |
+| `revokedAt` | `TIMESTAMPTZ` | Yes | `null` | Revocation timestamp. Non-null immediately returns 401. |
+
+* **Indexes**:
+  * `PRIMARY KEY (id)`: Clustered B-Tree index.
+  * `INDEX Session_userId_idx (userId)`: Fast session enumeration per user.
+  * `INDEX Session_expiresAt_idx (expiresAt)`: Fast automated expiration cleanup.
 
 ---
 

@@ -67,7 +67,7 @@ npm run build:frontend
 
 ### Run Tests & Verification Suites
 ```bash
-# Run full automated test suite (9 suites, 57 security tests)
+# Run full automated test suite (12 suites, 87 security tests)
 npm test
 
 # Run mutation verification tool (proves tests go RED if check is removed)
@@ -83,7 +83,7 @@ npm run lint
 > [!NOTE]
 > **Edge Perimeter Defense Notice (Cloudflare WAF / Bot Mitigation):**
 > - **Live Production Console (`https://trustvalt.me`):** Hardened with Cloudflare Edge WAF & Bot Mitigation to shield the live application against automated credential stuffing, web scrapers, and DDoS floods. Raw command-line HTTP scripts (`curl`, Python bots) targeting the live public endpoint receive `HTTP 403 Forbidden` / Cloudflare Managed Challenge.
-> - **Automated Grading & Security Testing:** All automated grading scripts and test suites (`npm test`, `npm run test:mutation`, `npm run test:gatekeeper`) are engineered to run locally (`http://127.0.0.1:7777` or in-memory Supertest). This verifies the entire 57-test security matrix (Single Gatekeeper DAL, IDOR 404 barriers, HMAC-SHA256 ledger integrity, token versioning, and crypto-shredding) without edge CDN network interference.
+> - **Automated Grading & Security Testing:** All automated grading scripts and test suites (`npm test`, `npm run test:mutation`, `npm run test:gatekeeper`) are engineered to run locally (`http://127.0.0.1:7777` or in-memory Supertest). This verifies the entire 87-test security matrix (Single Gatekeeper DAL, IDOR 404 barriers, HMAC-SHA256 ledger integrity, token versioning, and crypto-shredding) without edge CDN network interference.
 
 ### Production Daemon & Process Management (PM2)
 ```bash
@@ -122,6 +122,9 @@ npm run tunnel
 | **`tests/upload-hardening.test.ts`** | Upload Validation & Storage Bounds | 5 tests: PE/MZ executable rejection, extension whitelist, MIME/extension discrepancy, version history preservation, search query memory bounds (`take: 100`). |
 | **`tests/audit-tamper-immutability.test.ts`** | Cryptographic Ledger Integrity | 3 tests: 13-column HMAC-SHA256 coverage, advisory lock concurrency race condition prevention, external anchor head-fork & substitution detection. |
 | **`tests/audit.test.ts`** | Audit Ledger Baseline | 3 tests: Sequential event logging, valid HMAC hash chain, audit tail truncation detection. |
+| **`tests/hardened-attacks.test.ts`** | Advanced Attack Vectors & Cookie Auth | 17 tests: Single-channel `__Host-` cookie isolation, Bearer rejection, CSRF origin verification, W3C Fetch Metadata, pinned CSP, HKDF key derivation, steganographic watermarking, preview elimination. |
+| **`tests/pdf-protection-quota.test.ts`** | Dynamic PDF Protection & Multi-Download | 3 tests: Bounded multi-download quota, PDF password OTP protection, HttpOnly cookie authentication. |
+| **`tests/runtime-role-assertion.test.ts`** | Database Role Separation | 3 tests: Production fail-fast on missing `APP_DATABASE_URL`, connection resolution, non-privileged role assertion. |
 | **`scripts/mutation-test.ts`** | Mutation Resistance | Simulates check removal in `loadDocumentFor()`, verifies tests go RED, and restores code (100% green). |
 | **`scripts/verify-dal-invariants.ts`** | Live Web Adversarial Probe | Tests live HTTP/HTTPS targets (localhost or Cloudflare Tunnel) against JWT `alg: none`, HPP, path traversal, cross-tenant IDOR with spoofed headers, prototype pollution, and security headers. |
 
@@ -129,6 +132,6 @@ npm run tunnel
 
 ## 5. Core Documentation
 
-- **[`THREATS.md`](./THREATS.md):** Catalog of 47 modeled threat vectors (T-01 to T-47) spanning Categories A through G, Section 3 (Structural Enforcement & Mutation Resistance), Section 4 (Edge Perimeter Defense & Operational Security), Section 5 (Advanced Ephemeral Sharing & Identity Governance), and Section 6 (Threat Traceability & Verification Summary).
-- **[`PROMPTS.md`](./PROMPTS.md):** Human engineering oversight log with 20 entries documenting developer interventions, AI flaw corrections, and Git commit references.
+- **[`THREATS.md`](./THREATS.md):** Catalog of 63 modeled threat vectors (T-01 to T-63) spanning Categories A through J, Section 3 (Structural Enforcement & Mutation Resistance), Section 4 (Edge Perimeter Defense & Operational Security), Section 5 (Advanced Ephemeral Sharing & Identity Governance), and Section 6 (Threat Traceability & Verification Summary).
+- **[`PROMPTS.md`](./PROMPTS.md):** Human engineering oversight log with 25 entries documenting developer interventions, AI flaw corrections, and Git commit references.
 - **[`CONTEXT_HANDOVER.md`](./CONTEXT_HANDOVER.md):** Complete architectural analysis, 19 cataloged vulnerability fixes (L-01 to L-19), database schemas, and engineering invariants.
