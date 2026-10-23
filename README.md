@@ -127,6 +127,7 @@ npm run tunnel
 | **`tests/runtime-role-assertion.test.ts`** | Database Role Separation | 3 tests: Production fail-fast on missing `APP_DATABASE_URL`, connection resolution, non-privileged role assertion. |
 | **`scripts/mutation-test.ts`** | Mutation Resistance | Simulates check removal in `loadDocumentFor()`, verifies tests go RED, and restores code (100% green). |
 | **`scripts/verify-dal-invariants.ts`** | Live Web Adversarial Probe | Tests live HTTP/HTTPS targets (localhost or Cloudflare Tunnel) against JWT `alg: none`, HPP, path traversal, cross-tenant IDOR with spoofed headers, prototype pollution, and security headers. |
+| **`scripts/k6-load-test-20min.js`** | Sustained Enterprise Concurrency | Official 20-minute Grafana k6 endurance test across 504,936 requests (420.6 req/s, 0% error rate, 6.96ms median latency, certified for 5,000+ users). See [`LOAD_TEST_RESULTS.md`](./docs/LOAD_TEST_RESULTS.md). |
 
 ---
 
