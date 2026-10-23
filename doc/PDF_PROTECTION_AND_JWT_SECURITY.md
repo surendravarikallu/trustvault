@@ -86,7 +86,7 @@ When a user downloads a standard PDF from a web application:
       ├─ 2. Generates Cryptographic Share Grant & OTP:
       │     - Generates 64-character high-entropy Bearer Token
       │     - Generates 8-character cryptographically random OTP (CSPRNG)
-      │     - Hashes OTP with Argon2id / bcrypt and stores in database
+      │     - Hashes OTP with bcrypt (10 rounds) and stores in database
       │     - Sends OTP out-of-band (SMS / WhatsApp / Secure Email / Authenticator)
       │
       ▼
@@ -137,7 +137,7 @@ model SecureShareGrant {
   tokenHash          String    @unique // SHA-256 hash of the one-time transfer token
   
   // PDF Protection & OTP
-  otpHash            String    // Argon2id hash of the PDF open password
+  otpHash            String    // Bcrypt hash of the PDF open password (10 rounds)
   otpExpiresAt       DateTime
   
   // Download Quota Governance

@@ -50,7 +50,7 @@ Stores principal credentials, role-based clearance levels, and session invalidat
 | :--- | :--- | :--- | :--- | :--- |
 | `id` | `VARCHAR(36)` | **No** | `uuid()` | Primary Key (RFC 4122 UUID v4). |
 | `email` | `VARCHAR(255)` | **No** | None | Unique login identifier (lowercase normalized). |
-| `passwordHash` | `VARCHAR(255)` | **No** | None | Bcrypt-12 / Argon2id salted password hash. |
+| `passwordHash` | `VARCHAR(255)` | **No** | None | Bcrypt-12 salted password hash (work factor 12). |
 | `name` | `VARCHAR(255)` | **No** | None | Human-readable principal display name. |
 | `role` | `Role` (ENUM) | **No** | `'VIEWER'` | Enterprise Role: `ADMIN`, `OWNER`, `VIEWER`. |
 | `isActive` | `BOOLEAN` | **No** | `true` | Identity state. `false` immediately denies login and API access. |

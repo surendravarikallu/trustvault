@@ -138,7 +138,7 @@ flowchart TD
 
 ---
 
-### 3.4 Bottleneck 4: Password Hashing (Argon2 / Bcrypt CPU Work-Factor)
+### 3.4 Bottleneck 4: Password Hashing (Bcrypt CPU Work-Factor)
 * **The Workload**: `bcrypt.compare` with cost factor 12 consumes **~75ms of CPU time per login attempt**.
 * **Capacity Limit**: A single CPU core can process at most $1,000\text{ms} / 75\text{ms} \approx 13.3\text{ logins/second}$.
 * **Multi-Core Scaling**:

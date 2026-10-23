@@ -104,7 +104,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
           }}
         >
           <Lock size={14} color="var(--color-emerald)" />
-          <span>PostgreSQL Dual-Role Identity Ingress</span>
+          <span>Zero-Trust Enterprise Identity Ingress</span>
         </div>
 
         {error && (
@@ -269,7 +269,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
       </div>
 
       <div style={{ marginTop: '24px', fontSize: '11px', color: 'var(--text-dim)', textAlign: 'center' }}>
-        Protected by Argon2id / Bcrypt-12 Password Hashing & RFC 6238 TOTP Validation
+        Protected by Bcrypt-12 Salted Hashing & RFC 6238 TOTP Validation
       </div>
     </div>
   );

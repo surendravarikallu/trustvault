@@ -438,7 +438,8 @@ h1, h2, h3, h4, h5, h6 {
   background: var(--bg-surface);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
-  overflow: hidden;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   box-shadow: var(--shadow-elevation);
 }
 
@@ -756,6 +757,159 @@ textarea:focus {
     padding: 3px 6px;
     font-size: 11px;
     gap: 4px;
+  }
+}
+
+/* ============================================================
+   Tablet & Intermediate Viewports (<= 1024px)
+   ============================================================ */
+@media (max-width: 1024px) {
+  .metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+}
+
+/* ============================================================
+   Mobile Viewports (<= 768px)
+   ============================================================ */
+@media (max-width: 768px) {
+  /* System status strip: condense secondary telemetry, preserve security indicators */
+  .system-status-bar {
+    padding: 4px 12px;
+    font-size: 10px;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .system-status-item:nth-child(1),
+  .system-status-item:nth-child(2) {
+    display: none; /* Hide verbose loopback & driver text on mobile */
+  }
+
+  /* Main Navigation Header */
+  .navbar {
+    padding: 8px 12px;
+    gap: 8px;
+  }
+
+  .brand-title {
+    font-size: 14px;
+  }
+
+  .principal-bar {
+    gap: 6px;
+  }
+
+  .user-profile-badge {
+    padding: 3px 6px;
+    font-size: 11px;
+    max-width: 130px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Workspace Padding */
+  .workspace-container {
+    padding: 12px 10px 40px 10px;
+  }
+
+  /* Horizontal swipeable navigation tabs */
+  .nav-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    scrollbar-width: none; /* Firefox */
+    padding-bottom: 2px;
+    gap: 4px;
+  }
+
+  .nav-tabs::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
+  }
+
+  .nav-tab-btn {
+    padding: 6px 10px;
+    font-size: 12px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* Search & Toolbar */
+  .toolbar-panel {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .toolbar-panel form {
+    width: 100%;
+  }
+
+  .search-input-group {
+    min-width: 0;
+    width: 100%;
+  }
+
+  /* Metrics Grid */
+  .metrics-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  /* Tables: preserve integrity and enable smooth horizontal swipe */
+  .data-table-wrapper {
+    margin-left: -2px;
+    margin-right: -2px;
+    border-radius: var(--radius-sm);
+  }
+
+  .data-table {
+    min-width: 620px; /* Prevents column collision, triggers touch scrolling */
+  }
+
+  /* Mobile Modals */
+  .modal-overlay {
+    padding: 12px;
+    align-items: flex-end; /* Mobile bottom sheet style or centered */
+  }
+
+  .modal-content {
+    max-width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    border-radius: var(--radius-sm);
+  }
+
+  /* Toasts */
+  .toast {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    max-width: calc(100vw - 24px);
+    justify-content: center;
+  }
+}
+
+/* ============================================================
+   Compact Mobile Handsets (<= 480px)
+   ============================================================ */
+@media (max-width: 480px) {
+  .brand-badge {
+    display: none; /* Hide domain badge to avoid navbar crowding */
+  }
+
+  .principal-bar button span {
+    display: inline;
+  }
+
+  .metric-card {
+    padding: 10px 12px;
+  }
+
+  .metric-value {
+    font-size: 16px;
   }
 }
 
